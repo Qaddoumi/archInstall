@@ -3,13 +3,10 @@
 set -euo pipefail
 
 echo "changing the font: "
-
 setfont ter-116n
 
-echo
 
-echo "update"
-echo
+echo -e "\nupdating ...\n"
 pacman -Sy
 
 echo 
