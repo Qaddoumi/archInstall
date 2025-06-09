@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo pipefail
+set -o pipefail
 
 echo "changing the font: "
 setfont ter-116n
@@ -61,12 +61,9 @@ pacman -S --noconfirm archinstall
 echo -e "\nChecking for mounted partitions on $DISK..."
 for part in $(lsblk -lnp -o NAME | grep "^$DISK"); do
     echo "Attempting to unmount $part..."
-    umount "$part" 2>/dev/null || true
-    swapoff "$part" 2>/dev/null || true
+    umount "$part"
+    swapoff "$part" 
 done
-
-# Double check with a recursive unmount
-umount -R "$DISK" 2>/dev/null || true
 
 # Wipe existing partitions
 echo -e "\nWiping $DISK..."
