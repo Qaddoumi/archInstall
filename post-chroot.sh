@@ -84,32 +84,50 @@ sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/
 
 # Enable swap
 if [ ! -f /swapfile ]; then
-    echo "Error: Swapfile not found"
-else
-    swapon /swapfile
-    echo "/swapfile none swap defaults 0 0" >> /etc/fstab
+    echo "❌ Error: /swapfile not found. Aborting."
+    exit 1
 fi
 
+if ! swapon --show=NAME | grep -q "^/swapfile"; then
+    echo "🔁 Enabling swapfile..."
+    swapon /swapfile
+else
+    echo "✅ Swapfile already active."
+fi
+
+# Ensure it's in fstab (only once)
+grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap defaults 0 0' >> /etc/fstab
+
+
 # Enable services
+echo -e "\nEnabling services (NetworkManager, sshd)"
 systemctl enable NetworkManager
 systemctl enable sshd
 
 # Install bootloader
-bootctl install
+if ! command -v bootctl &> /dev/null; then
+    echo "❌ bootctl not found. Please install systemd-boot first."
+fi
+else 
+    echo "✅ bootctl found."
+    echo "Installing systemd-boot..."
+    bootctl install
+    # Create systemd-boot config
+    cat <<LOADEREOF > /boot/loader/loader.conf
+    default arch
+    timeout 3
+    editor no
+    LOADEREOF
 
-# Create systemd-boot config
-cat <<LOADEREOF > /boot/loader/loader.conf
-default arch
-timeout 3
-editor no
-LOADEREOF
+    cat <<ARCHEOF > /boot/loader/entries/arch.conf
+    title   Arch Linux
+    linux   /vmlinuz-linux
+    initrd  /initramfs-linux.img
+    options root=UUID=${ROOT_PART_UUID} rw
+    ARCHEOF
+fi
 
-cat <<ARCHEOF > /boot/loader/entries/arch.conf
-title   Arch Linux
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-options root=UUID=${ROOT_PART_UUID} rw
-ARCHEOF
+
 
 echo "✅ System configured. Rebooting in 5 seconds..."
 sleep 5
