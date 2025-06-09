@@ -59,7 +59,7 @@ pacman -S --noconfirm archinstall
 
 # Check and unmount any partitions from the disk before wiping
 echo -e "\nChecking for mounted partitions on $DISK..."
-if mount | grep -q "^$DISK"; then
+if mount | grep "^$DISK"; then
     echo "Unmounting all partitions on $DISK..."
     umount -R "$DISK"* 2>/dev/null || true
     swapoff "$DISK"* 2>/dev/null || true
