@@ -9,11 +9,7 @@ setfont ter-116n
 echo -e "\nupdating ...\n"
 pacman -Sy
 
-echo 
-echo
-
-echo "excuting lsblk to show all the drives : "
-echo
+echo -e "\n\nexcuting lsblk to show all the drives : \n"
 
 lsblk
 
