@@ -77,10 +77,17 @@ fi
 
 echo -e "\nContinuing with partitioning...\n"
 
+# Before partitioning
+echo -e "\n📝 Starting partitioning process in 5 seconds..."
+sleep 5
+
 # Wipe existing partitions
-echo -e "\nWiping $DISK..."
+echo -e "\n🧹 Wiping $DISK..."
 wipefs -a "$DISK"
 sgdisk --zap-all "$DISK"
+
+echo -e "\n📝 Creating partitions in 5 seconds..."
+sleep 5
 
 # Create partitions: 2GB boot, rest root
 echo "Creating partitions on $DISK..."
@@ -100,6 +107,9 @@ else
   ROOT_PART="${DISK}2"
 fi
 
+echo -e "\n💾 Formatting partitions in 5 seconds..."
+sleep 5
+
 # Format partitions
 echo "Formatting boot partition ($BOOT_PART) as FAT32..."
 mkfs.fat -F32 "$BOOT_PART"
@@ -114,6 +124,9 @@ mount "$ROOT_PART" /mnt
 mkdir /mnt/boot
 mount "$BOOT_PART" /mnt/boot
 
+echo -e "\n📁 Setting up swap in 5 seconds..."
+sleep 5
+
 # Setup swap file the size of RAM
 RAM_SIZE=$(grep MemTotal /proc/meminfo | awk '{print int($2/1024) "M"}')
 
@@ -124,11 +137,16 @@ chmod 600 /mnt/swapfile
 mkswap /mnt/swapfile
 swapon /mnt/swapfile
 
+echo -e "\n⚙️ Generating fstab in 5 seconds..."
+sleep 5
+
 # Ensure /mnt/etc exists before generating fstab
 mkdir -p /mnt/etc
 genfstab -U /mnt >> /mnt/etc/fstab
 
 echo "✅ Partitioning, formatting, and mounting complete."
+echo -e "\n🚀 Starting base system installation in 5 seconds..."
+sleep 5
 
 bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/archInstall/refs/heads/main/post-chroot.sh) \
     --root-password "$ROOT_PASSWORD" \
@@ -136,6 +154,7 @@ bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/archInstall/refs/head
     --user-password "$USER_PASSWORD" 
 
 echo "✅ Base system installed."
-echo "✅ System setup complete. Rebooting now..."
+echo -e "\n🔄 System setup complete. Rebooting in 5 seconds..."
+sleep 5
 
 reboot

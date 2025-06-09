@@ -36,7 +36,7 @@ export USERNAME
 export USER_PASSWORD
 
 # First part - before chroot
-
+echo "Starting Arch Linux post installation script..."
 pacstrap -K /mnt base linux linux-firmware sudo vim nano networkmanager openssh wget curl \
     git linux-headers base-devel efibootmgr dosfstools mkinitcpio
 
@@ -65,9 +65,12 @@ else
 fi
 
 # Generate fstab
+echo "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
 
 echo "✅ Base system installed."    
+
+sleep 5
 
 # Create a second script for chroot commands
 cat <<'SCRIPTEOF' > /mnt/setup.sh
@@ -76,16 +79,17 @@ set -euo pipefail
 
 ### CONFIGURATION ###
 HOSTNAME="mohArch"
-MYUSER="moh"
 LOCALE="en_US.UTF-8"
 TIMEZONE="Asia/Amman"
 ROOT_PART_UUID=$(blkid -s UUID -o value $(findmnt / -o SOURCE -n))
 
 # Set timezone
+echo "Setting timezone to ${TIMEZONE}..."
 ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
 hwclock --systohc
 
 # Set locale
+echo "Setting locale to ${LOCALE}..."
 sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen
 locale-gen
 echo "LANG=${LOCALE}" > /etc/locale.conf
@@ -99,6 +103,7 @@ cat <<HOSTSEOF > /etc/hosts
 HOSTSEOF
 
 # Set root password non-interactively using the default from environment variable
+echo "Setting root password..."
 echo "root:${ROOT_PASSWORD}" | chpasswd
 
 # Create user and add to groups using default credentials from environment variables
@@ -107,9 +112,12 @@ useradd -m -G wheel -s /bin/bash "${USERNAME}"
 echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
 
 # Enable sudo for wheel group
+echo "Enabling sudo for wheel group..."
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers
+sleep 5
 
 # Enable swap
+echo "Setting up swap..."
 if [ ! -f /swapfile ]; then
     echo "❌ Error: /swapfile not found. Aborting."
     exit 1
@@ -125,17 +133,22 @@ fi
 # Ensure it's in fstab (only once)
 grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap defaults 0 0' >> /etc/fstab
 
+sleep 5
 
 # Enable services
 echo -e "\nEnabling services (NetworkManager, sshd)"
 systemctl enable NetworkManager
 systemctl enable sshd
 
+sleep 5
+
 # Generate initramfs
 echo "Generating initramfs..."
 mkinitcpio -P
+sleep 5
 
 # Install bootloader
+echo "Installing bootloader..."
 if ! command -v bootctl &> /dev/null; then
     echo "❌ bootctl not found. Please install systemd-boot first."
     exit 1
@@ -171,9 +184,8 @@ fi
 
 
 
-echo "✅ System configured. Rebooting in 5 seconds..."
+echo "✅ System configured."
 sleep 5
-exit
 SCRIPTEOF
 
 # Make the script executable
@@ -183,7 +195,9 @@ chmod +x /mnt/setup.sh
 arch-chroot /mnt /setup.sh
 
 # Clean up
+echo "Cleaning up..."
 rm /mnt/setup.sh
+sleep 5
 
 # Unmount and reboot
 echo "Unmounting partitions "
