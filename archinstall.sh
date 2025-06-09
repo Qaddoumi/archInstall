@@ -154,7 +154,7 @@ bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/archInstall/refs/head
     --user-password "$USER_PASSWORD" 
 
 echo "✅ Base system installed."
-echo -e "\n🔄 System setup complete. Rebooting in 5 seconds..."
 sleep 5
+echo -e "\n🔄 System setup complete. you may reboot now"
 
-reboot
+
