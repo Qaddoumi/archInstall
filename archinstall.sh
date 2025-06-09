@@ -39,8 +39,14 @@ parted -s "$DISK" \
     set 1 boot on \
     mkpart primary ext4 2049MiB 100%
 
-BOOT_PART="${DISK}1"
-ROOT_PART="${DISK}2"
+# Partition naming fix for NVMe
+if [[ "$DISK" =~ nvme ]]; then
+  BOOT_PART="${DISK}p1"
+  ROOT_PART="${DISK}p2"
+else
+  BOOT_PART="${DISK}1"
+  ROOT_PART="${DISK}2"
+fi
 
 # Format partitions
 echo "Formatting boot partition ($BOOT_PART) as FAT32..."
@@ -66,7 +72,9 @@ chmod 600 /mnt/swapfile
 mkswap /mnt/swapfile
 swapon /mnt/swapfile
 
-# Persist fstab
+# Ensure /mnt/etc exists before generating fstab
+mkdir -p /mnt/etc
 genfstab -U /mnt >> /mnt/etc/fstab
 
 echo "✅ Partitioning, formatting, and mounting complete."
+
