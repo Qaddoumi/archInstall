@@ -6,11 +6,6 @@ echo "changing the font: "
 setfont ter-116n
 
 
-echo -e "\nupdating ...\n"
-pacman -Sy
-pacman -S --noconfirm archinstall 
-
-
 echo
 # Ask for root password
 # Arch Linux uses standard UNIX password rules:
@@ -57,8 +52,13 @@ if [ ! -b "$DISK" ]; then
     exit 1
 fi
 
+echo -e "\nupdating ...\n"
+pacman -Sy
+pacman -S --noconfirm archinstall 
+
+
 # Wipe existing partitions
-echo "Wiping $DISK..."
+echo -e "\nWiping $DISK..."
 wipefs -a "$DISK"
 sgdisk --zap-all "$DISK"
 
