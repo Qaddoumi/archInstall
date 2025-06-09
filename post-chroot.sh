@@ -37,7 +37,33 @@ export USER_PASSWORD
 
 # First part - before chroot
 
-pacstrap -K /mnt base linux linux-firmware sudo vim nano networkmanager openssh wget curl
+pacstrap -K /mnt base linux linux-firmware sudo vim nano networkmanager openssh wget curl \
+    git linux-headers base-devel 
+
+# Install microcode based on CPU vendor
+if grep -q "GenuineIntel" /proc/cpuinfo; then
+    echo "Installing Intel microcode..."
+    pacman -Sy --noconfirm intel-ucode
+elif grep -q "AuthenticAMD" /proc/cpuinfo; then
+    echo "Installing AMD microcode..."
+    pacman -Sy --noconfirm amd-ucode
+else
+    echo "Unknown CPU vendor. Skipping microcode installation."
+fi
+
+if lspci | grep -q "VGA compatible controller: NVIDIA"; then
+    echo "NVIDIA GPU detected. Installing NVIDIA drivers..."
+    pacman -Sy --noconfirm nvidia nvidia-utils
+elif lspci | grep -q "VGA compatible controller: AMD"; then
+    echo "AMD GPU detected. Installing AMD drivers..."
+    pacman -Sy --noconfirm xf86-video-amdgpu
+elif lspci | grep -q "VGA compatible controller: Intel"; then
+    echo "Intel GPU detected. Installing Intel drivers..."
+    pacman -Sy --noconfirm xf86-video-intel
+else
+    echo "Unknown GPU. Skipping GPU driver installation."
+fi
+
 # Generate fstab
 genfstab -U /mnt >> /mnt/etc/fstab
 
