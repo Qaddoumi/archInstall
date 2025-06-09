@@ -1,13 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-# First part - before chroot
-pacstrap -K /mnt base linux linux-firmware sudo vim nano networkmanager openssh wget curl
-# Generate fstab
-genfstab -U /mnt >> /mnt/etc/fstab
-
-echo "✅ Base system installed."    
-
 # Parse named arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -41,6 +34,14 @@ fi
 export ROOT_PASSWORD
 export USERNAME
 export USER_PASSWORD
+
+# First part - before chroot
+
+pacstrap -K /mnt base linux linux-firmware sudo vim nano networkmanager openssh wget curl
+# Generate fstab
+genfstab -U /mnt >> /mnt/etc/fstab
+
+echo "✅ Base system installed."    
 
 # Create a second script for chroot commands
 cat <<'SCRIPTEOF' > /mnt/setup.sh
