@@ -38,7 +38,7 @@ export USER_PASSWORD
 # First part - before chroot
 
 pacstrap -K /mnt base linux linux-firmware sudo vim nano networkmanager openssh wget curl \
-    git linux-headers base-devel 
+    git linux-headers base-devel efibootmgr dosfstools mkinitcpio
 
 # Install microcode based on CPU vendor
 if grep -q "GenuineIntel" /proc/cpuinfo; then
@@ -131,27 +131,42 @@ echo -e "\nEnabling services (NetworkManager, sshd)"
 systemctl enable NetworkManager
 systemctl enable sshd
 
+# Generate initramfs
+echo "Generating initramfs..."
+mkinitcpio -P
+
 # Install bootloader
 if ! command -v bootctl &> /dev/null; then
     echo "❌ bootctl not found. Please install systemd-boot first."
-fi
+    exit 1
 else 
     echo "✅ bootctl found."
     echo "Installing systemd-boot..."
     bootctl install
+    
     # Create systemd-boot config
     cat <<LOADEREOF > /boot/loader/loader.conf
-    default arch
-    timeout 3
-    editor no
-    LOADEREOF
+default arch
+timeout 3
+editor no
+LOADEREOF
+
+    # Add microcode to boot entry
+    if [ -f "/boot/intel-ucode.img" ]; then
+        MICROCODE="initrd  /intel-ucode.img"
+    elif [ -f "/boot/amd-ucode.img" ]; then
+        MICROCODE="initrd  /amd-ucode.img"
+    else
+        MICROCODE=""
+    fi
 
     cat <<ARCHEOF > /boot/loader/entries/arch.conf
-    title   Arch Linux
-    linux   /vmlinuz-linux
-    initrd  /initramfs-linux.img
-    options root=UUID=${ROOT_PART_UUID} rw
-    ARCHEOF
+title   Arch Linux
+linux   /vmlinuz-linux
+${MICROCODE}
+initrd  /initramfs-linux.img
+options root=UUID=${ROOT_PART_UUID} rw
+ARCHEOF
 fi
 
 
