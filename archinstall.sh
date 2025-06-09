@@ -8,13 +8,10 @@ setfont ter-116n
 
 echo -e "\nupdating ...\n"
 pacman -Sy
+pacman -S --noconfirm archinstall 
 
-echo -e "\n\nexcuting lsblk to show all the drives : \n"
-
-lsblk
 
 echo
-
 # Ask for root password
 # Arch Linux uses standard UNIX password rules:
 # - Any length (but at least 1 character is required)
@@ -48,6 +45,9 @@ if [[ "$USER_PASSWORD" != "$USER_PASSWORD_CONFIRM" ]]; then
     exit 1
 fi
 
+echo -e "\n\nexcuting lsblk to show all the drives : \n"
+lsblk
+echo
 # Ask for the disk device
 read -rp "Enter the disk to install on (e.g. /dev/sda or /dev/nvme0n1): " DISK
 

@@ -12,7 +12,7 @@ echo "✅ Base system installed."
 while [[ $# -gt 0 ]]; do
     case $1 in
         --root-password)
-            DEFAULT_ROOT_PASS="$2"
+            ROOT_PASSWORD="$2"
             shift 2
             ;;
         --username)
@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --user-password)
-            DEFAULT_USER_PASS="$2"
+            USER_PASSWORD="$2"
             shift 2
             ;;
         *)
@@ -32,15 +32,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Verify all required parameters are provided
-if [[ -z "${DEFAULT_ROOT_PASS:-}" ]] || [[ -z "${DEFAULT_USER:-}" ]] || [[ -z "${DEFAULT_USER_PASS:-}" ]]; then
+if [[ -z "${ROOT_PASSWORD:-}" ]] || [[ -z "${USERNAME:-}" ]] || [[ -z "${USER_PASSWORD:-}" ]]; then
     echo "Missing required parameters"
     echo "Usage: $0 --root-password <password> --username <user> --user-password <password>"
     exit 1
 fi
 
-export DEFAULT_ROOT_PASS
-export DEFAULT_USER
-export DEFAULT_USER_PASS
+export ROOT_PASSWORD
+export USERNAME
+export USER_PASSWORD
 
 # Create a second script for chroot commands
 cat <<'SCRIPTEOF' > /mnt/setup.sh
@@ -72,12 +72,12 @@ cat <<HOSTSEOF > /etc/hosts
 HOSTSEOF
 
 # Set root password non-interactively using the default from environment variable
-echo "root:${DEFAULT_ROOT_PASS}" | chpasswd
+echo "root:${ROOT_PASSWORD}" | chpasswd
 
 # Create user and add to groups using default credentials from environment variables
 echo "Creating user account..."
-useradd -m -G wheel -s /bin/bash "${DEFAULT_USER}"
-echo "${DEFAULT_USER}:${DEFAULT_USER_PASS}" | chpasswd
+useradd -m -G wheel -s /bin/bash "${USERNAME}"
+echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
 
 # Enable sudo for wheel group
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers
