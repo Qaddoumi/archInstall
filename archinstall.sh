@@ -59,7 +59,7 @@ pacman -S --noconfirm archinstall
 
 # Check and unmount any partitions from the disk before wiping
 echo -e "\nChecking for mounted partitions on $DISK..."
-for part in $(lsblk -lnp -o NAME | grep "^$DISK"); do
+for part in $(lsblk -lnp -o NAME | grep "^$DISK" | tail -n +2); do
     echo "Attempting to unmount $part..."
     if ! umount "$part"; then
         echo "Failed to unmount $part"
