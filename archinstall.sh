@@ -68,14 +68,9 @@ for part in $(lsblk -lnp -o NAME | grep "^$DISK" | tail -n +2); do
 done
 if ! swapoff "$DISK"; then
     echo "Failed to deactivate swap on $DISK, maybe it was not active."
-    echo "Continuing with partitioning..."
 fi
 
-# Double check with a recursive unmount
-if ! umount -R "$DISK"; then
-    echo "Failed to recursively unmount $DISK"
-    exit 1
-fi
+echo -e "\nContinuing with partitioning...\n"
 
 # Wipe existing partitions
 echo -e "\nWiping $DISK..."
