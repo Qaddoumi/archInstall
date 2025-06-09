@@ -61,9 +61,21 @@ pacman -S --noconfirm archinstall
 echo -e "\nChecking for mounted partitions on $DISK..."
 for part in $(lsblk -lnp -o NAME | grep "^$DISK"); do
     echo "Attempting to unmount $part..."
-    umount "$part"
-    swapoff "$part" 
+    if ! umount "$part"; then
+        echo "Failed to unmount $part"
+        exit 1
+    fi
 done
+if ! swapoff "$DISK"; then
+    echo "Failed to deactivate swap on $part"
+    exit 1
+fi
+
+# Double check with a recursive unmount
+if ! umount -R "$DISK"; then
+    echo "Failed to recursively unmount $DISK"
+    exit 1
+fi
 
 # Wipe existing partitions
 echo -e "\nWiping $DISK..."
