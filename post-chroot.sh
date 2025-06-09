@@ -8,15 +8,35 @@ genfstab -U /mnt >> /mnt/etc/fstab
 
 echo "✅ Base system installed."    
 
-# Parse command line arguments for credentials
-if [ $# -ne 3 ]; then
-    echo "Usage: $0 <root_password> <username> <user_password>"
+# Parse named arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --root-password)
+            DEFAULT_ROOT_PASS="$2"
+            shift 2
+            ;;
+        --username)
+            DEFAULT_USER="$2"
+            shift 2
+            ;;
+        --user-password)
+            DEFAULT_USER_PASS="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown parameter: $1"
+            echo "Usage: $0 --root-password <password> --username <user> --user-password <password>"
+            exit 1
+            ;;
+    esac
+done
+
+# Verify all required parameters are provided
+if [[ -z "${DEFAULT_ROOT_PASS:-}" ]] || [[ -z "${DEFAULT_USER:-}" ]] || [[ -z "${DEFAULT_USER_PASS:-}" ]]; then
+    echo "Missing required parameters"
+    echo "Usage: $0 --root-password <password> --username <user> --user-password <password>"
     exit 1
 fi
-
-DEFAULT_ROOT_PASS="$1"
-DEFAULT_USER="$2"
-DEFAULT_USER_PASS="$3"
 
 export DEFAULT_ROOT_PASS
 export DEFAULT_USER
