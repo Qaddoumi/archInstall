@@ -15,6 +15,38 @@ lsblk
 
 echo
 
+# Ask for root password
+# Arch Linux uses standard UNIX password rules:
+# - Any length (but at least 1 character is required)
+# - Can include letters, numbers, and symbols
+# - No enforced complexity by default, but strong passwords are recommended
+# - Avoid spaces and non-ASCII characters for compatibility
+
+read -rsp "Enter root password: " ROOT_PASSWORD
+echo
+read -rsp "Confirm root password: " ROOT_PASSWORD_CONFIRM
+echo
+if [[ "$ROOT_PASSWORD" != "$ROOT_PASSWORD_CONFIRM" ]]; then
+    echo "Root passwords do not match. Aborting."
+    exit 1
+fi
+if [[ -z "$ROOT_PASSWORD" ]]; then
+    echo "Root password cannot be empty. Aborting."
+    exit 1
+fi
+
+# Ask for username
+read -rp "Enter username: " USERNAME
+
+# Ask for user password
+read -rsp "Enter password for $USERNAME: " USER_PASSWORD
+echo
+read -rsp "Confirm password for $USERNAME: " USER_PASSWORD_CONFIRM
+echo
+if [[ "$USER_PASSWORD" != "$USER_PASSWORD_CONFIRM" ]]; then
+    echo "User passwords do not match. Aborting."
+    exit 1
+fi
 
 # Ask for the disk device
 read -rp "Enter the disk to install on (e.g. /dev/sda or /dev/nvme0n1): " DISK
@@ -78,3 +110,12 @@ genfstab -U /mnt >> /mnt/etc/fstab
 
 echo "✅ Partitioning, formatting, and mounting complete."
 
+bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/archInstall/refs/heads/main/post-chroot.sh) \
+    --root-password "$ROOT_PASSWORD" \
+    --username "$USERNAME" \
+    --user-password "$USER_PASSWORD" 
+
+echo "✅ Base system installed."
+echo "✅ System setup complete. Rebooting now..."
+
+reboot

@@ -8,6 +8,20 @@ genfstab -U /mnt >> /mnt/etc/fstab
 
 echo "✅ Base system installed."    
 
+# Parse command line arguments for credentials
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <root_password> <username> <user_password>"
+    exit 1
+fi
+
+DEFAULT_ROOT_PASS="$1"
+DEFAULT_USER="$2"
+DEFAULT_USER_PASS="$3"
+
+export DEFAULT_ROOT_PASS
+export DEFAULT_USER
+export DEFAULT_USER_PASS
+
 # Create a second script for chroot commands
 cat <<'SCRIPTEOF' > /mnt/setup.sh
 #!/bin/bash
@@ -37,15 +51,13 @@ cat <<HOSTSEOF > /etc/hosts
 127.0.1.1   ${HOSTNAME}.localdomain ${HOSTNAME}
 HOSTSEOF
 
-# Root password
-echo "Set root password: "
-passwd root
+# Set root password non-interactively using the default from environment variable
+echo "root:${DEFAULT_ROOT_PASS}" | chpasswd
 
-# Create user and add to groups
+# Create user and add to groups using default credentials from environment variables
 echo "Creating user account..."
-useradd -m -G wheel -s /bin/bash "${MYUSER}"
-echo "Set password for ${MYUSER}: "
-passwd "${MYUSER}"
+useradd -m -G wheel -s /bin/bash "${DEFAULT_USER}"
+echo "${DEFAULT_USER}:${DEFAULT_USER_PASS}" | chpasswd
 
 # Enable sudo for wheel group
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers
@@ -94,7 +106,6 @@ arch-chroot /mnt /setup.sh
 rm /mnt/setup.sh
 
 # Unmount and reboot
-echo "Unmounting partitions and rebooting..."
+echo "Unmounting partitions "
 sync
 umount -R /mnt
-reboot
