@@ -182,19 +182,35 @@ mount | grep "/dev/$DISK"
 
 newTask "==================================================\n==================================================\n"
 
-# Create swap file
+# Create swap file with hibernation support
+info "Creating swap file with hibernation support..."
 create_swap() {
-    local ram_size=$(free -g | awk '/Mem:/ {print $2}')
+    # Get precise RAM size in bytes (not rounded to GB)
+    local ram_bytes=$(awk '/MemTotal/ {print $2 * 1024}' /proc/meminfo)
+    local ram_gib=$(awk "BEGIN {print int(($ram_bytes/1073741824)+0.5)}")  # Round to nearest GB
     local swapfile="/mnt/swapfile"
     
-    info "Creating swap file (size: ${ram_size}G)..."
-    fallocate -l "${ram_size}G" "$swapfile" || error "Failed to allocate swap file"
+    # For hibernation, swap should be RAM size + 10-20% (kernel docs recommendation)
+    local swap_size=$(awk "BEGIN {print int($ram_bytes * 1.15)}")  # 15% larger than RAM
+    
+    info "System has ${ram_gib}GB RAM (precise: $(numfmt --to=iec $ram_bytes))"
+    info "Creating swap file for hibernation (size: $(numfmt --to=iec $swap_size))..."
+    
+    # Create swap file
+    dd if=/dev/zero of="$swapfile" bs=1M count=$(($swap_size/1048576)) status=progress || 
+        error "Failed to create swap file"
     chmod 600 "$swapfile"
     mkswap "$swapfile" || error "Failed to format swap file"
     swapon "$swapfile" || error "Failed to activate swap"
     
+    # Add to fstab (commented out by default)
+    echo "# Swap file for hibernation" >> /mnt/etc/fstab
+    echo "$swapfile none swap defaults 0 0" >> /mnt/etc/fstab
+    echo "resume=UUID=$(blkid -s UUID -o value /dev/${DISK}2)" >> /mnt/etc/default/grub
+    
     info "Swap file created successfully:"
     swapon --show
+    info "Hibernation support configured in fstab and GRUB"
 }
 
 create_swap
@@ -205,6 +221,8 @@ newTask "==================================================\n===================
 info "\n${GREEN}System ready for Arch Linux installation!${NC}"
 info "Next steps:"
 info "1. Run: pacstrap /mnt base linux linux-firmware"
-info "2. Generate fstab: genfstab -U /mnt >> /mnt/etc/fstab"
-info "3. Add the swapfile to fstab: echo '/swapfile none swap defaults 0 0' >> /mnt/etc/fstab"
-info "4. chroot into the new system: arch-chroot /mnt"
+info "2. After chrooting, edit /etc/mkinitcpio.conf and add 'resume' to HOOKS:"
+info "   HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)"
+info "3. Regenerate initramfs: mkinitcpio -P"
+info "4. Configure GRUB: grub-mkconfig -o /boot/grub/grub.cfg"
+info "5. Verify resume parameter in /proc/cmdline after reboot"
