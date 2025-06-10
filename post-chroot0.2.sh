@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-DISK="/dev/sda"
+DISK="/dev/vda"
 
 echo "[*] Setting timezone and clock..."
 ln -sf /usr/share/zoneinfo/UTC /etc/localtime
