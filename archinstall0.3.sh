@@ -89,9 +89,9 @@ cleanup1() {
 }
 
 # Run cleanup
-#if ! cleanup1; then
-#    warn "Proceeding with disk operations despite cleanup warnings"
-#fi
+if ! cleanup1; then
+    warn "Proceeding with disk operations despite cleanup warnings"
+fi
 
 
 # Cleanup sequence
@@ -136,7 +136,7 @@ cleanup() {
     sleep 2  # Allow time for processes to settle
 }
 
-cleanup
+#cleanup
 
 # Wipe disk
 info "Wiping disk signatures..."
