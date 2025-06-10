@@ -2,6 +2,25 @@
 set -euo pipefail
 
 DISK="/dev/vda"
+
+# Check and unmount any partitions from the disk before wiping
+echo -e "\nChecking for mounted partitions on $DISK..."
+for part in $(lsblk -lnp -o NAME | grep "^$DISK" | tail -n +2); do
+    echo "Checking if $part is mounted..."
+    if mountpoint -q "$part"; then
+        echo "Attempting to unmount $part..."
+        if ! umount "$part"; then
+            echo "Failed to unmount $part"
+            exit 1
+        fi
+    else
+        echo "$part is not mounted."
+    fi
+done
+if ! swapoff "$DISK"; then
+    echo "Failed to deactivate swap on $DISK, maybe it was not active."
+fi
+
 PART="${DISK}1"
 
 echo "[*] Wiping and partitioning $DISK..."
