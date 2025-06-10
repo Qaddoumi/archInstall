@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-DISK="/dev/sda"
+DISK="/dev/vda"
 PART="${DISK}1"
 
 echo "[*] Wiping and partitioning $DISK..."
