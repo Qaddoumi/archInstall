@@ -18,7 +18,11 @@ error() {
 }
 
 info() {
-    echo -e "${GREEN}[INFO] $*${NC}"
+    echo -e "${GREEN}[*] $*${NC}"
+}
+
+newTask() {
+    echo -e "${GREEN} $*${NC}"
 }
 
 warn() {
@@ -44,8 +48,8 @@ lsblk "/dev/$DISK"
 read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'): " CONFIRM
 [[ "$CONFIRM" == "y" ]] || error "Operation cancelled"
 
-info "\n=================================================="
-info "==================================================\n"
+newTask "==================================================\n==================================================\n"
+ 
 # Enhanced cleanup function
 cleanup() {
     local attempts=3
@@ -53,7 +57,8 @@ cleanup() {
     
     while (( attempts-- > 0 )); do
         # 1. Kill processes using the disk
-        info "\nAttempt $((3-attempts)): Killing processes..."
+        echo
+        info "Attempt $((3-attempts)): Killing processes..."
         pids=$(lsof +f -- "/dev/$DISK"* 2>/dev/null | awk '{print $2}' | uniq)
         sleep 2
         [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
@@ -65,7 +70,8 @@ cleanup() {
         sleep 2
         
         # 2. Unmount filesystems (including nested mounts)
-        info "\nUnmounting partitions..."
+        echo
+        info "Unmounting partitions..."
         umount -R "/dev/$DISK"* 2>/dev/null
         sleep 2
         
@@ -78,7 +84,8 @@ cleanup() {
         sleep 2
         
         # 4. Disable swap
-        info "\nDisabling swap..."
+        echo
+        info "Disabling swap..."
         swapoff -a 2>/dev/null
         for swap in $(blkid -t TYPE=swap -o device | grep "/dev/$DISK"); do
             swapoff -v "$swap"
@@ -86,7 +93,8 @@ cleanup() {
         sleep 2
 
         # Check and unmount any partitions from the disk before wiping
-        info "\nChecking for mounted partitions on /dev/$DISK..."
+        echo
+        info "Checking for mounted partitions on /dev/$DISK..."
         for part in $(lsblk -lnp -o NAME | grep "^/dev/$DISK" | tail -n +2); do
             info "Attempting to unmount $part..."
             if ! umount "$part" 2>/dev/null; then
@@ -100,7 +108,8 @@ cleanup() {
         # 5. Check if cleanup was successful
         if ! (mount | grep -q "/dev/$DISK") && \
            ! (lsof +f -- "/dev/$DISK"* 2>/dev/null | grep -q .); then
-            info "\nCleanup successful :) "
+            echo
+            info "Cleanup successful :) "
             return 0
         fi
         
@@ -116,24 +125,21 @@ if ! cleanup; then
     warn "Proceeding with disk operations despite cleanup warnings"
 fi
 
-info "\n=================================================="
-info "==================================================\n"
+newTask "==================================================\n==================================================\n"
 
 # Wipe disk
 info "Wiping disk signatures..."
 wipefs -a "/dev/$DISK" || error "Failed to wipe disk"
 sleep 2
 
-info "\n=================================================="
-info "==================================================\n"
+newTask "==================================================\n==================================================\n"
 
 # Partitioning
 info "Creating new GPT partition table..."
 parted -s "/dev/$DISK" mklabel gpt || error "Partitioning failed"
 sleep 2
 
-info "\n=================================================="
-info "==================================================\n"
+newTask "==================================================\n==================================================\n"
 
 # Custom partition sizes
 EFI_SIZE="2G"  # Adjust as needed
@@ -148,8 +154,7 @@ parted -s "/dev/$DISK" set 1 esp on
 parted -s "/dev/$DISK" mkpart primary ext4 "$EFI_SIZE" "$ROOT_SIZE" || error "Root partition failed"
 sleep 2
 
-info "\n=================================================="
-info "==================================================\n"
+newTask "==================================================\n==================================================\n"
 
 # Formatting
 info "Formatting partitions:"
@@ -157,15 +162,13 @@ mkfs.fat -F32 "/dev/${DISK}1" || error "EFI format failed"
 mkfs.ext4 -F "/dev/${DISK}2" || error "Root format failed"
 sleep 2
 
-info "\n=================================================="
-info "==================================================\n"
+newTask "==================================================\n==================================================\n"
 
 # Verification
 info "Verifying new layout:"
 fdisk -l "/dev/$DISK" || error "Verification failed"
 
-info "\n=================================================="
-info "==================================================\n"
+newTask "==================================================\n==================================================\n"
 
 info "\n${GREEN}Disk preparation successful!${NC}"
 info "Mount points for Arch installation:"
