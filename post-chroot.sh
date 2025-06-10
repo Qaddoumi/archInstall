@@ -36,6 +36,12 @@ export ROOT_PASSWORD
 export USERNAME
 export USER_PASSWORD
 
+#echo "[*] Installing base system..."
+#pacstrap /mnt base linux linux-firmware vim grub os-prober
+
+#echo "[*] Generating fstab..."
+#genfstab -U /mnt >> /mnt/etc/fstab
+
 # First part - before chroot
 echo "Starting Arch Linux post installation script..."
 pacstrap -K /mnt base linux linux-firmware systemd systemd-sysvcompat sudo vim nano networkmanager openssh wget curl \

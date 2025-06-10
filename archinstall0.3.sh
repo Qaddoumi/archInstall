@@ -216,7 +216,86 @@ create_swap() {
 create_swap
 sleep 2
 
+newTask "==================================================\n=================================================="
+
+newTask "==== CONFIGURING GRUB & HIBERNATION ===="
+
+# Install essential packages
+info "Installing base system and GRUB..."
+pacstrap /mnt base linux linux-firmware grub efibootmgr os-prober || error "Failed to install base packages"
+sleep 2
+# Ensure /mnt/etc exists before generating fstab
+mkdir -p /mnt/etc
+
+# Generate fstab
+info "Generating fstab..."
+genfstab -U /mnt >> /mnt/etc/fstab || error "Failed to generate fstab"
+
+# Chroot setup
+info "Configuring GRUB and hibernation in chroot..."
+arch-chroot /mnt /bin/bash <<EOF || error "Chroot commands failed"
+
+    # Set timezone and locale
+    ln -sf /usr/share/zoneinfo/$(timedatectl | grep "Time zone" | awk '{print $3}') /etc/localtime
+    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+    locale-gen
+    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+
+    # Set hostname
+    
+    # Configure mkinitcpio for hibernation
+    sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)/' /etc/mkinitcpio.conf
+    mkinitcpio -P
+    sleep 2
+
+    # Install and configure GRUB
+    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+    sleep 2
+    echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
+    
+    # Calculate swapfile offset (critical for hibernation)
+    SWAPFILE_OFFSET=\$(filefrag -v /swapfile | awk '{ if(\$1=="0:"){print \$4} }')
+    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$(blkid -s UUID -o value /dev/${DISK}2) resume_offset=\$SWAPFILE_OFFSET\"|" /etc/default/grub
+    
+    grub-mkconfig -o /boot/grub/grub.cfg
+    sleep 2
+
+    # Enable systemd hibernation service
+    echo "[Login]" > /etc/systemd/logind.conf.d/hibernate.conf
+    echo "HandleLidSwitch=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
+    echo "HandleLidSwitchExternalPower=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
+EOF
+
+newTask "==================================================\n=================================================="
+newTask "==== FINALIZING INSTALLATION ===="
+
+# Set root password
+info "Set root password:"
+arch-chroot /mnt passwd || warn "Failed to set root password (can do manually later)"
+
+# Enable network manager (optional)
+arch-chroot /mnt systemctl enable NetworkManager.service || warn "NetworkManager not installed"
+
+# Configure sudo (optional)
+echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sudo"
+
 newTask "==================================================\n==================================================\n"
+
+info "\n${GREEN}ARCH LINUX INSTALLATION COMPLETE!${NC}"
+info "Hibernation is fully configured with:"
+info "  - Swapfile at /swapfile (size: \$(numfmt --to=iec $(awk '/MemTotal/ {print $2 * 1024 * 1.15}' /proc/meminfo))"
+info "  - GRUB resume parameters set"
+info "  - systemd hibernation triggers (lid close)"
+
+info "\n${YELLOW}REBOOT INSTRUCTIONS:${NC}"
+info "1. Unmount: umount -R /mnt"
+info "2. Reboot: systemctl reboot"
+info "3. After reboot, verify hibernation works:"
+info "   sudo systemctl hibernate"
+info "   (Should resume to your desktop)"
+
+
+
 
 info "\n${GREEN}System ready for Arch Linux installation!${NC}"
 info "Next steps:"
@@ -226,3 +305,6 @@ info "   HOOKS=(base udev autodetect modconf block filesystems keyboard fsck res
 info "3. Regenerate initramfs: mkinitcpio -P"
 info "4. Configure GRUB: grub-mkconfig -o /boot/grub/grub.cfg"
 info "5. Verify resume parameter in /proc/cmdline after reboot"
+
+
+echo "[✓] Installation complete. You can now reboot."
