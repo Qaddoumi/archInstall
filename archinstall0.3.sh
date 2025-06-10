@@ -52,7 +52,7 @@ cleanup1() {
     
     while (( attempts-- > 0 )); do
         # 1. Kill processes using the disk
-        info "Attempt $((3-attempts)): Killing processes..."
+        info "\nAttempt $((3-attempts)): Killing processes..."
         pids=$(lsof +f -- "/dev/$DISK"* 2>/dev/null | awk '{print $2}' | uniq)
         sleep 2
         [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
@@ -64,7 +64,7 @@ cleanup1() {
         sleep 2
         
         # 2. Unmount filesystems (including nested mounts)
-        info "Unmounting partitions..."
+        info "\nUnmounting partitions..."
         umount -R "/dev/$DISK"* 2>/dev/null
         sleep 2
         
@@ -77,7 +77,7 @@ cleanup1() {
         sleep 2
         
         # 4. Disable swap
-        info "Disabling swap..."
+        info "\nDisabling swap..."
         swapoff -a 2>/dev/null
         for swap in $(blkid -t TYPE=swap -o device | grep "/dev/$DISK"); do
             swapoff -v "$swap"
@@ -99,7 +99,7 @@ cleanup1() {
         # 5. Check if cleanup was successful
         if ! (mount | grep -q "/dev/$DISK") && \
            ! (lsof +f -- "/dev/$DISK"* 2>/dev/null | grep -q .); then
-            info "Cleanup successful"
+            info "\nCleanup successful :) "
             return 0
         fi
         
@@ -114,51 +114,6 @@ cleanup1() {
 if ! cleanup1; then
     warn "Proceeding with disk operations despite cleanup warnings"
 fi
-
-
-# Cleanup sequence
-cleanup() {
-    info "Starting cleanup process...\n"
-
-    info "\nkilling any processes using the disk $DISK ...\n"
-    for process in $(lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq); do kill -9 "$process"; done
-    sleep 2  # Allow time for processes to settle
-    # try again to kill any processes using the disk
-    lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq | xargs -r kill -9
-    sleep 2
-    
-    # Disable swap
-    info "Disabling swap..."
-    swapoff -a 2>/dev/null
-    for swap in $(blkid -t TYPE=swap -o device | grep "/dev/$DISK"); do
-        swapoff -v "$swap"
-        sleep 2
-    done
-    
-    # Deactivate LVM (silenced descriptor leak warnings)
-    if command -v vgchange &>/dev/null; then
-        info "Deactivating LVM volumes..."
-        vgchange -an 2>/dev/null
-        sleep 2
-    fi
-
-    # Check and unmount any partitions from the disk before wiping
-    info "\nChecking for mounted partitions on /dev/$DISK..."
-    for part in $(lsblk -lnp -o NAME | grep "^/dev/$DISK" | tail -n +2); do
-        info "Attempting to unmount $part..."
-        if ! umount "$part" 2>/dev/null; then
-            warn "Failed to unmount $part"
-        else
-            info "$part unmounted successfully."
-        fi
-    done
-    sleep 2
-    
-    sync
-    sleep 2  # Allow time for processes to settle
-}
-
-#cleanup
 
 # Wipe disk
 info "Wiping disk signatures..."
