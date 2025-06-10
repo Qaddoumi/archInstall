@@ -9,7 +9,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --username)
-            DEFAULT_USER="$2"
+            USERNAME="$2"
             shift 2
             ;;
         --user-password)
