@@ -10,7 +10,7 @@ set -uo pipefail  # Strict error handling
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m'
+NC='\033[0m' # rest the color to default
 
 error() {
     echo -e "${RED}[ERROR] $*${NC}" >&2
@@ -22,7 +22,7 @@ info() {
 }
 
 newTask() {
-    echo -e "${GREEN} $*${NC}"
+    echo -e "${GREEN}$*${NC}"
 }
 
 warn() {
@@ -98,7 +98,7 @@ cleanup() {
         for part in $(lsblk -lnp -o NAME | grep "^/dev/$DISK" | tail -n +2); do
             info "Attempting to unmount $part..."
             if ! umount "$part" 2>/dev/null; then
-                warn "Failed to unmount $part"
+                warn "Failed to unmount $part, maybe it was not mounted."
             else
                 info "$part unmounted successfully."
             fi
