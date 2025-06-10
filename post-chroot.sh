@@ -27,7 +27,7 @@ done
 # Verify all required parameters are provided
 if [[ -z "${ROOT_PASSWORD:-}" ]] || [[ -z "${USERNAME:-}" ]] || [[ -z "${USER_PASSWORD:-}" ]]; then
     echo "Missing required parameters"
-    echo "${ROOT_PASSWORD:-} ${USERNAME} ${USER_PASSWORD}"
+    echo -e "\n${ROOT_PASSWORD:-}\n${USERNAME}\n${USER_PASSWORD}\n ..... \n"
     echo "Usage: $0 --root-password <password> --username <user> --user-password <password>"
     exit 1
 fi
