@@ -170,7 +170,41 @@ fdisk -l "/dev/$DISK" || error "Verification failed"
 
 newTask "==================================================\n==================================================\n"
 
-info "\n${GREEN}Disk preparation successful!${NC}"
-info "Mount points for Arch installation:"
-info "  mount /dev/${DISK}2 /mnt"
-info "  mkdir -p /mnt/boot && mount /dev/${DISK}1 /mnt/boot"
+# Mounting partitions
+info "Mounting partitions for installation..."
+mkdir -p /mnt
+mount "/dev/${DISK}2" /mnt || error "Failed to mount root partition"
+mkdir -p /mnt/boot
+mount "/dev/${DISK}1" /mnt/boot || error "Failed to mount boot partition"
+sleep 2
+info "Partitions mounted successfully:"
+mount | grep "/dev/$DISK"
+
+newTask "==================================================\n==================================================\n"
+
+# Create swap file
+create_swap() {
+    local ram_size=$(free -g | awk '/Mem:/ {print $2}')
+    local swapfile="/mnt/swapfile"
+    
+    info "Creating swap file (size: ${ram_size}G)..."
+    fallocate -l "${ram_size}G" "$swapfile" || error "Failed to allocate swap file"
+    chmod 600 "$swapfile"
+    mkswap "$swapfile" || error "Failed to format swap file"
+    swapon "$swapfile" || error "Failed to activate swap"
+    
+    info "Swap file created successfully:"
+    swapon --show
+}
+
+create_swap
+sleep 2
+
+newTask "==================================================\n==================================================\n"
+
+info "\n${GREEN}System ready for Arch Linux installation!${NC}"
+info "Next steps:"
+info "1. Run: pacstrap /mnt base linux linux-firmware"
+info "2. Generate fstab: genfstab -U /mnt >> /mnt/etc/fstab"
+info "3. Add the swapfile to fstab: echo '/swapfile none swap defaults 0 0' >> /mnt/etc/fstab"
+info "4. chroot into the new system: arch-chroot /mnt"
