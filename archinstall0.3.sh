@@ -1,13 +1,15 @@
+
 #!/bin/bash
 
 # Disk Wipe and Arch Linux Preparation Script
-# Version 0.3 - Improved error handling and logging
+# Version 0.4 - More robust cleanup handling
 
 set -uo pipefail  # Strict error handling
 
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 error() {
@@ -19,12 +21,16 @@ info() {
     echo -e "${GREEN}[INFO] $*${NC}"
 }
 
+warn() {
+    echo -e "${YELLOW}[WARN] $*${NC}"
+}
+
 # Check root
 [[ $(id -u) -eq 0 ]] || error "This script must be run as root"
 
 # List disks
 info "Available disks:"
-lsblk -d -o NAME,SIZE,MODEL,TRAN
+lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
 
 # Get disk
 read -rp "Enter disk to wipe (e.g., vda, nvme0n1): " DISK
@@ -37,6 +43,56 @@ lsblk "/dev/$DISK"
 # Final confirmation
 read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'erase'): " CONFIRM
 [[ "$CONFIRM" == "erase" ]] || error "Operation cancelled"
+
+
+# Enhanced cleanup function
+cleanup1() {
+    local attempts=3
+    info "Starting cleanup process..."
+    
+    while (( attempts-- > 0 )); do
+        # 1. Kill processes using the disk
+        info "Attempt $((3-attempts)): Killing processes..."
+        pids=$(lsof +f -- "/dev/$DISK"* 2>/dev/null | awk '{print $2}' | uniq)
+        [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
+        
+        # 2. Unmount filesystems (including nested mounts)
+        info "Unmounting partitions..."
+        umount -R "/dev/$DISK"* 2>/dev/null
+        
+        # 3. Deactivate LVM
+        if command -v vgchange &>/dev/null; then
+            info "Deactivating LVM..."
+            vgchange -an 2>/dev/null
+            lvremove -f $(lvs -o lv_path --noheadings 2>/dev/null | grep "$DISK") 2>/dev/null
+        fi
+        
+        # 4. Disable swap
+        info "Disabling swap..."
+        swapoff -a 2>/dev/null
+        for swap in $(blkid -t TYPE=swap -o device | grep "/dev/$DISK"); do
+            swapoff -v "$swap"
+        done
+        
+        # 5. Check if cleanup was successful
+        if ! (mount | grep -q "/dev/$DISK") && \
+           ! (lsof +f -- "/dev/$DISK"* 2>/dev/null | grep -q .); then
+            info "Cleanup successful"
+            return 0
+        fi
+        
+        sleep 2
+    done
+    
+    warn "Cleanup incomplete - some resources might still be in use"
+    return 1
+}
+
+# Run cleanup
+#if ! cleanup1; then
+#    warn "Proceeding with disk operations despite cleanup warnings"
+#fi
+
 
 # Cleanup sequence
 cleanup() {
@@ -54,19 +110,27 @@ cleanup() {
     swapoff -a 2>/dev/null
     for swap in $(blkid -t TYPE=swap -o device | grep "/dev/$DISK"); do
         swapoff -v "$swap"
+        sleep 2
     done
     
     # Deactivate LVM (silenced descriptor leak warnings)
     if command -v vgchange &>/dev/null; then
         info "Deactivating LVM volumes..."
         vgchange -an 2>/dev/null
+        sleep 2
     fi
-    
-    # Unmount filesystems
-    info "Unmounting partitions..."
-    for mount in $(mount | grep "/dev/$DISK" | awk '{print $1}'); do
-        umount -v "$mount" 2>/dev/null
+
+    # Check and unmount any partitions from the disk before wiping
+    info "\nChecking for mounted partitions on /dev/$DISK..."
+    for part in $(lsblk -lnp -o NAME | grep "^/dev/$DISK" | tail -n +2); do
+        info "Attempting to unmount $part..."
+        if ! umount "$part" 2>/dev/null; then
+            error "Failed to unmount $part"
+        else
+            info "$part unmounted successfully."
+        fi
     done
+    sleep 2
     
     sync
     sleep 2  # Allow time for processes to settle
