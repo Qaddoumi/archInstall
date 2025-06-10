@@ -22,7 +22,7 @@ echo "[*] Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
 
 echo "[*] Copying post-chroot script..."
-cp post-chroot.sh /mnt/root/
+curl -s "https://raw.githubusercontent.com/Qaddoumi/archInstall/refs/heads/main/post-chroot0.2.sh" -o /mnt/root/post-chroot.sh
 chmod +x /mnt/root/post-chroot.sh
 
 echo "[*] Entering chroot to continue setup..."

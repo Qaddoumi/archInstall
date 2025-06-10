@@ -170,16 +170,16 @@ timeout 3
 editor no
 LOADEREOF
 
-    # Add microcode to boot entry
-    if [ -f "/boot/intel-ucode.img" ]; then
-        MICROCODE="initrd  /intel-ucode.img"
-    elif [ -f "/boot/amd-ucode.img" ]; then
-        MICROCODE="initrd  /amd-ucode.img"
-    else
-        MICROCODE=""
-    fi
+# Add microcode to boot entry
+if [ -f "/boot/intel-ucode.img" ]; then
+    MICROCODE="initrd  /intel-ucode.img"
+elif [ -f "/boot/amd-ucode.img" ]; then
+    MICROCODE="initrd  /amd-ucode.img"
+else
+    MICROCODE=""
+fi
 
-    cat <<ARCHEOF > /boot/loader/entries/arch.conf
+cat <<ARCHEOF > /boot/loader/entries/arch.conf
 title   Arch Linux
 linux   /vmlinuz-linux
 ${MICROCODE}
