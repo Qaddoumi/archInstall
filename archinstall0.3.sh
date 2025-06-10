@@ -34,9 +34,35 @@ if [ "$CONFIRM" != "yes" ]; then
     exit 0
 fi
 
-# Unmount any mounted partitions
-echo -e "\nUnmounting any mounted partitions..."
-umount -R /dev/${DISK}* 2>/dev/null
+echo -e "\nkilling any processes using the disk $DISK ...\n"
+for process in $(lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq); do kill -9 "$process"; done
+# try again to kill any processes using the disk
+lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq | xargs -r kill -9
+
+# Improved unmounting sequence - CORRECT ORDER
+echo -e "\nAttempting to disable swap, deactivate LVM, and unmount partitions..."
+
+# 1. Disable swap (check if any swap is on this disk)
+swapoff -a  # Disable all swap (safer, but you could target only ${DISK} if preferred)
+for swap in $(blkid -t TYPE=swap -o device | grep "/dev/${DISK}"); do
+    swapoff -v "$swap"
+done
+
+# 2. Deactivate LVM (if present)
+if command -v vgchange &>/dev/null; then
+    vgchange -an  # Deactivate all volume groups (or target specific ones if needed)
+fi
+
+# 3. Now unmount filesystems (including LVM if it was active)
+for mount in $(mount | grep "/dev/${DISK}" | awk '{print $1}'); do
+    umount -v "$mount"
+done
+
+# 4. Final sync to ensure all operations are complete
+sync
+
+echo -e "\nWaiting for processes to settle... then proceeding with disk wipe.\n"
+sleep 10
 
 # Wipe the disk
 echo -e "\nWiping disk..."

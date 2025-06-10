@@ -3,6 +3,11 @@ set -euo pipefail
 
 DISK="/dev/vda"
 
+echo -e "\nkilling any processes using the disk $DISK ...\n"
+for process in $(lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq); do kill -9 "$process"; done
+# try again to kill any processes using the disk
+lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq | xargs -r kill -9
+
 # Check and unmount any partitions from the disk before wiping
 echo -e "\nChecking for mounted partitions on $DISK..."
 for part in $(lsblk -lnp -o NAME | grep "^$DISK" | tail -n +2); do
