@@ -41,8 +41,8 @@ info "\nSelected disk layout:"
 lsblk "/dev/$DISK"
 
 # Final confirmation
-read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'erase'): " CONFIRM
-[[ "$CONFIRM" == "erase" ]] || error "Operation cancelled"
+read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'): " CONFIRM
+[[ "$CONFIRM" == "y" ]] || error "Operation cancelled"
 
 
 # Enhanced cleanup function
@@ -54,11 +54,19 @@ cleanup1() {
         # 1. Kill processes using the disk
         info "Attempt $((3-attempts)): Killing processes..."
         pids=$(lsof +f -- "/dev/$DISK"* 2>/dev/null | awk '{print $2}' | uniq)
+        sleep 2
         [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
+        sleep 2
+        for process in $(lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq); do kill -9 "$process"; done
+        sleep 2  # Allow time for processes to settle
+        # try again to kill any processes using the disk
+        lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq | xargs -r kill -9
+        sleep 2
         
         # 2. Unmount filesystems (including nested mounts)
         info "Unmounting partitions..."
         umount -R "/dev/$DISK"* 2>/dev/null
+        sleep 2
         
         # 3. Deactivate LVM
         if command -v vgchange &>/dev/null; then
@@ -66,6 +74,7 @@ cleanup1() {
             vgchange -an 2>/dev/null
             lvremove -f $(lvs -o lv_path --noheadings 2>/dev/null | grep "$DISK") 2>/dev/null
         fi
+        sleep 2
         
         # 4. Disable swap
         info "Disabling swap..."
@@ -73,6 +82,19 @@ cleanup1() {
         for swap in $(blkid -t TYPE=swap -o device | grep "/dev/$DISK"); do
             swapoff -v "$swap"
         done
+        sleep 2
+
+        # Check and unmount any partitions from the disk before wiping
+        info "\nChecking for mounted partitions on /dev/$DISK..."
+        for part in $(lsblk -lnp -o NAME | grep "^/dev/$DISK" | tail -n +2); do
+            info "Attempting to unmount $part..."
+            if ! umount "$part" 2>/dev/null; then
+                warn "Failed to unmount $part"
+            else
+                info "$part unmounted successfully."
+            fi
+        done
+        sleep 2
         
         # 5. Check if cleanup was successful
         if ! (mount | grep -q "/dev/$DISK") && \
@@ -125,7 +147,7 @@ cleanup() {
     for part in $(lsblk -lnp -o NAME | grep "^/dev/$DISK" | tail -n +2); do
         info "Attempting to unmount $part..."
         if ! umount "$part" 2>/dev/null; then
-            error "Failed to unmount $part"
+            warn "Failed to unmount $part"
         else
             info "$part unmounted successfully."
         fi
