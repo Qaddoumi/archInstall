@@ -33,7 +33,7 @@ info "Available disks:"
 lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
 
 # Get disk
-read -rp "Enter disk to wipe (e.g., vda, nvme0n1): " DISK
+read -rp "Enter disk to wipe (e.g., vda, sda, nvme0n1): " DISK
 [[ -e "/dev/$DISK" ]] || error "Disk /dev/$DISK not found"
 
 # Show disk info
@@ -44,11 +44,12 @@ lsblk "/dev/$DISK"
 read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'): " CONFIRM
 [[ "$CONFIRM" == "y" ]] || error "Operation cancelled"
 
-
+info "\n=================================================="
+info "==================================================\n"
 # Enhanced cleanup function
 cleanup() {
     local attempts=3
-    info "Starting cleanup process..."
+    info "Starting cleanup process (3 attempts)...\n"
     
     while (( attempts-- > 0 )); do
         # 1. Kill processes using the disk
@@ -115,13 +116,24 @@ if ! cleanup; then
     warn "Proceeding with disk operations despite cleanup warnings"
 fi
 
+info "\n=================================================="
+info "==================================================\n"
+
 # Wipe disk
 info "Wiping disk signatures..."
 wipefs -a "/dev/$DISK" || error "Failed to wipe disk"
+sleep 2
+
+info "\n=================================================="
+info "==================================================\n"
 
 # Partitioning
 info "Creating new GPT partition table..."
 parted -s "/dev/$DISK" mklabel gpt || error "Partitioning failed"
+sleep 2
+
+info "\n=================================================="
+info "==================================================\n"
 
 # Custom partition sizes
 EFI_SIZE="2G"  # Adjust as needed
@@ -134,15 +146,26 @@ parted -s "/dev/$DISK" set 1 esp on
 
 # Root Partition
 parted -s "/dev/$DISK" mkpart primary ext4 "$EFI_SIZE" "$ROOT_SIZE" || error "Root partition failed"
+sleep 2
+
+info "\n=================================================="
+info "==================================================\n"
 
 # Formatting
 info "Formatting partitions:"
 mkfs.fat -F32 "/dev/${DISK}1" || error "EFI format failed"
 mkfs.ext4 -F "/dev/${DISK}2" || error "Root format failed"
+sleep 2
+
+info "\n=================================================="
+info "==================================================\n"
 
 # Verification
 info "Verifying new layout:"
 fdisk -l "/dev/$DISK" || error "Verification failed"
+
+info "\n=================================================="
+info "==================================================\n"
 
 info "\n${GREEN}Disk preparation successful!${NC}"
 info "Mount points for Arch installation:"
