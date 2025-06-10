@@ -260,7 +260,8 @@ arch-chroot /mnt /bin/bash <<EOF || error "Chroot commands failed"
     grub-mkconfig -o /boot/grub/grub.cfg
     sleep 2
 
-    # Enable systemd hibernation service
+    # Enable systemd hibernation service (hypernate on lid close)
+    mkdir -p /etc/systemd/logind.conf.d
     echo "[Login]" > /etc/systemd/logind.conf.d/hibernate.conf
     echo "HandleLidSwitch=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
     echo "HandleLidSwitchExternalPower=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
@@ -281,30 +282,7 @@ echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sud
 
 newTask "==================================================\n==================================================\n"
 
-info "\n${GREEN}ARCH LINUX INSTALLATION COMPLETE!${NC}"
-info "Hibernation is fully configured with:"
-info "  - Swapfile at /swapfile (size: \$(numfmt --to=iec $(awk '/MemTotal/ {print $2 * 1024 * 1.15}' /proc/meminfo))"
-info "  - GRUB resume parameters set"
-info "  - systemd hibernation triggers (lid close)"
-
-info "\n${YELLOW}REBOOT INSTRUCTIONS:${NC}"
-info "1. Unmount: umount -R /mnt"
-info "2. Reboot: systemctl reboot"
-info "3. After reboot, verify hibernation works:"
-info "   sudo systemctl hibernate"
-info "   (Should resume to your desktop)"
-
-
-
-
-info "\n${GREEN}System ready for Arch Linux installation!${NC}"
-info "Next steps:"
-info "1. Run: pacstrap /mnt base linux linux-firmware"
-info "2. After chrooting, edit /etc/mkinitcpio.conf and add 'resume' to HOOKS:"
-info "   HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)"
-info "3. Regenerate initramfs: mkinitcpio -P"
-info "4. Configure GRUB: grub-mkconfig -o /boot/grub/grub.cfg"
-info "5. Verify resume parameter in /proc/cmdline after reboot"
-
-
-echo "[✓] Installation complete. You can now reboot."
+info "\n${GREEN}[✓] ARCH LINUX INSTALLATION COMPLETE!${NC}"
+echo
+info "run Unmount: umount -R /mnt"
+echo "then you can reboot."
