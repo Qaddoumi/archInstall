@@ -7,7 +7,9 @@ DISK="/dev/vda"
 echo -e "\nChecking for mounted partitions on $DISK..."
 for part in $(lsblk -lnp -o NAME | grep "^$DISK" | tail -n +2); do
     echo "Attempting to unmount $part..."
-    umount -q "$part"
+    if ! umount "$part" 2>/dev/null; then
+        echo "Failed to unmount $part"
+    fi
 done
 if ! swapoff "$DISK"; then
     echo "Failed to deactivate swap on $DISK, maybe it was not active."
