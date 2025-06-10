@@ -37,7 +37,7 @@ export USER_PASSWORD
 
 # First part - before chroot
 echo "Starting Arch Linux post installation script..."
-pacstrap -K /mnt base linux linux-firmware sudo vim nano networkmanager openssh wget curl \
+pacstrap -K /mnt base linux linux-firmware systemd systemd-sysvcompat sudo vim nano networkmanager openssh wget curl \
     git linux-headers base-devel efibootmgr dosfstools mkinitcpio
 
 # Install microcode based on CPU vendor
@@ -140,6 +140,11 @@ echo -e "\nEnabling services (NetworkManager, sshd)"
 systemctl enable NetworkManager
 systemctl enable sshd
 
+echo -e "\nEnabling essential systemd services..."
+systemctl enable systemd-networkd
+systemctl enable systemd-resolved
+systemctl enable systemd-timesyncd
+
 sleep 5
 
 # Generate initramfs
@@ -178,10 +183,19 @@ title   Arch Linux
 linux   /vmlinuz-linux
 ${MICROCODE}
 initrd  /initramfs-linux.img
-options root=UUID=${ROOT_PART_UUID} rw
+options root=UUID=${ROOT_PART_UUID} rw rootfstype=ext4 systemd.unified_cgroup_hierarchy=1
 ARCHEOF
 fi
 
+cat <<SYSTEMDHOOKSEOF > /etc/mkinitcpio.conf
+MODULES=()
+BINARIES=()
+FILES=()
+HOOKS=(base systemd autodetect modconf kms keyboard sd-vconsole block filesystems fsck)
+SYSTEMDHOOKSEOF
+
+# Regenerate initramfs after changing config
+mkinitcpio -P
 
 
 echo "✅ System configured."
