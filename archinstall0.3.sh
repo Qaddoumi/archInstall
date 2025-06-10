@@ -46,7 +46,7 @@ read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'):
 
 
 # Enhanced cleanup function
-cleanup1() {
+cleanup() {
     local attempts=3
     info "Starting cleanup process..."
     
@@ -111,7 +111,7 @@ cleanup1() {
 }
 
 # Run cleanup
-if ! cleanup1; then
+if ! cleanup; then
     warn "Proceeding with disk operations despite cleanup warnings"
 fi
 
