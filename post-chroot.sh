@@ -43,33 +43,17 @@ export USER_PASSWORD
 #genfstab -U /mnt >> /mnt/etc/fstab
 
 # First part - before chroot
+CPU_VENDOR=$(grep -m 1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
+echo "Detected CPU vendor: $CPU_VENDOR"
+echo "Install the proper video drivers based on GPU type"
+GPU_TYPE=$(lspci | grep -E "VGA compatible controller" | awk '{print $5}')
+
 echo "Starting Arch Linux post installation script..."
 pacstrap -K /mnt base linux linux-firmware systemd systemd-sysvcompat sudo vim nano networkmanager openssh wget curl \
-    git linux-headers base-devel efibootmgr dosfstools mkinitcpio
+    git linux-headers base-devel efibootmgr dosfstools mkinitcpio ${GPU_TYPE} ${CPU_VENDOR}-ucode
 
-# Install microcode based on CPU vendor
-if grep -q "GenuineIntel" /proc/cpuinfo; then
-    echo "Installing Intel microcode..."
-    pacman -Sy --noconfirm intel-ucode
-elif grep -q "AuthenticAMD" /proc/cpuinfo; then
-    echo "Installing AMD microcode..."
-    pacman -Sy --noconfirm amd-ucode
-else
-    echo "Unknown CPU vendor. Skipping microcode installation."
-fi
-
-if lspci | grep -q "VGA compatible controller: NVIDIA"; then
-    echo "NVIDIA GPU detected. Installing NVIDIA drivers..."
-    pacman -Sy --noconfirm nvidia nvidia-utils
-elif lspci | grep -q "VGA compatible controller: AMD"; then
-    echo "AMD GPU detected. Installing AMD drivers..."
-    pacman -Sy --noconfirm xf86-video-amdgpu
-elif lspci | grep -q "VGA compatible controller: Intel"; then
-    echo "Intel GPU detected. Installing Intel drivers..."
-    pacman -Sy --noconfirm xf86-video-intel
-else
-    echo "Unknown GPU. Skipping GPU driver installation."
-fi
+# Ensure /mnt/etc exists before generating fstab
+mkdir -p /mnt/etc
 
 # Generate fstab
 echo "Generating fstab..."

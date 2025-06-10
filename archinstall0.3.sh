@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # Disk Wipe and Arch Linux Preparation Script
@@ -32,6 +31,33 @@ warn() {
 # Check root
 [[ $(id -u) -eq 0 ]] || error "This script must be run as root"
 
+read -rsp "Enter root password: " ROOT_PASSWORD
+echo
+read -rsp "Confirm root password: " ROOT_PASSWORD_CONFIRM
+echo
+if [[ "$ROOT_PASSWORD" != "$ROOT_PASSWORD_CONFIRM" ]]; then
+    error "Root passwords do not match. Aborting."
+fi
+if [[ -z "$ROOT_PASSWORD" ]]; then
+    error "Root password cannot be empty. Aborting."
+fi
+
+# Ask for username
+read -rp "Enter username: " USERNAME
+
+# Ask for user password
+read -rsp "Enter password for $USERNAME: " USER_PASSWORD
+echo
+read -rsp "Confirm password for $USERNAME: " USER_PASSWORD_CONFIRM
+echo
+if [[ "$USER_PASSWORD" != "$USER_PASSWORD_CONFIRM" ]]; then
+    error "User passwords do not match. Aborting."
+fi
+
+export ROOT_PASSWORD
+export USERNAME
+export USER_PASSWORD
+
 # List disks
 info "Available disks:"
 lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
@@ -39,6 +65,15 @@ lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
 # Get disk
 read -rp "Enter disk to wipe (e.g., vda, sda, nvme0n1): " DISK
 [[ -e "/dev/$DISK" ]] || error "Disk /dev/$DISK not found"
+
+# Add NVMe partition naming handler here
+if [[ "$DISK" =~ "nvme" ]]; then
+    BOOT_PART="/dev/${DISK}p1"
+    ROOT_PART="/dev/${DISK}p2"
+else
+    BOOT_PART="/dev/${DISK}1"
+    ROOT_PART="/dev/${DISK}2"
+fi
 
 # Show disk info
 info "\nSelected disk layout:"
@@ -173,9 +208,9 @@ newTask "==================================================\n===================
 # Mounting partitions
 info "Mounting partitions for installation..."
 mkdir -p /mnt
-mount "/dev/${DISK}2" /mnt || error "Failed to mount root partition"
+mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
 mkdir -p /mnt/boot
-mount "/dev/${DISK}1" /mnt/boot || error "Failed to mount boot partition"
+mount "$BOOT_PART" /mnt/boot || error "Failed to mount boot partition"
 sleep 2
 info "Partitions mounted successfully:"
 mount | grep "/dev/$DISK"
@@ -221,58 +256,109 @@ newTask "==================================================\n===================
 newTask "==== CONFIGURING GRUB & HIBERNATION ===="
 
 # Install essential packages
-info "Installing base system and GRUB..."
-pacstrap /mnt base linux linux-firmware grub efibootmgr os-prober || error "Failed to install base packages"
+CPU_VENDOR=$(grep -m 1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
+info "Detected CPU vendor: $CPU_VENDOR"
+info "Install the proper video drivers based on GPU type"
+GPU_TYPE=$(lspci | grep -E "VGA compatible controller" | awk '{print $5}')
+if [[ "$GPU_TYPE" == "NVIDIA" ]]; then
+    info "NVIDIA GPU detected. Installing NVIDIA drivers..."
+    GPU_PACKAGES="nvidia nvidia-utils"
+elif [[ "$GPU_TYPE" == "AMD" ]]; then
+    info "AMD GPU detected. Installing AMD drivers..."
+    GPU_PACKAGES="xf86-video-amdgpu"
+elif [[ "$GPU_TYPE" == "Intel" ]]; then
+    info "Intel GPU detected. Installing Intel drivers..."
+    GPU_PACKAGES="xf86-video-intel"
+else
+    warn "Unknown GPU type: $GPU_TYPE. Skipping GPU driver installation."
+    GPU_PACKAGES=""
+fi
+info "Installing base system, GRUB and required packages..."
+pacstrap /mnt base linux linux-firmware grub efibootmgr os-prober \
+    networkmanager openssh sudo nano vim wget git ${CPU_VENDOR}-ucode ${GPU_PACKAGES} || error "Failed to install base packages"
 sleep 2
+
 # Ensure /mnt/etc exists before generating fstab
 mkdir -p /mnt/etc
 
 # Generate fstab
-info "Generating fstab..."
+info "Generating fstab"
 genfstab -U /mnt >> /mnt/etc/fstab || error "Failed to generate fstab"
+sleep 2
+newTask "==================================================\n==================================================\n"
+newTask "==== CHROOT SETUP ===="
 
 # Chroot setup
 info "Configuring GRUB and hibernation in chroot..."
 arch-chroot /mnt /bin/bash <<EOF || error "Chroot commands failed"
 
-    # Set timezone and locale
-    ln -sf /usr/share/zoneinfo/$(timedatectl | grep "Time zone" | awk '{print $3}') /etc/localtime
-    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
-    locale-gen
-    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+TIMEZONE="Asia/Amman"
+LOCALE="en_US.UTF-8"
+HOSTNAME="${USERNAME}Arch"
 
-    # Set hostname
-    
-    # Configure mkinitcpio for hibernation
-    sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)/' /etc/mkinitcpio.conf
-    mkinitcpio -P
-    sleep 2
+# Set timezone
+echo "Setting timezone to ${TIMEZONE}..."
+ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
+hwclock --systohc
 
-    # Install and configure GRUB
-    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
-    sleep 2
-    echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
-    
-    # Calculate swapfile offset (critical for hibernation)
-    SWAPFILE_OFFSET=\$(filefrag -v /swapfile | awk '{ if(\$1=="0:"){print \$4} }')
-    sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$(blkid -s UUID -o value /dev/${DISK}2) resume_offset=\$SWAPFILE_OFFSET\"|" /etc/default/grub
-    
-    grub-mkconfig -o /boot/grub/grub.cfg
-    sleep 2
+# Set locale
+echo "Setting locale to ${LOCALE}..."
+sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen
+locale-gen
+echo "LANG=${LOCALE}" > /etc/locale.conf
 
-    # Enable systemd hibernation service (hypernate on lid close)
-    mkdir -p /etc/systemd/logind.conf.d
-    echo "[Login]" > /etc/systemd/logind.conf.d/hibernate.conf
-    echo "HandleLidSwitch=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
-    echo "HandleLidSwitchExternalPower=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
+# Set hostname and hosts
+echo "Setting hostname to ${USERNAME}Arch"
+
+echo "setting hosts file"
+echo "$HOSTNAME" > /etc/hostname
+cat <<HOSTSEOF > /etc/hosts
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   ${HOSTNAME}.localdomain ${HOSTNAME}
+HOSTSEOF
+
+# Set root password
+echo "Setting root password..."
+echo "root:${ROOT_PASSWORD}" | chpasswd
+
+# Create user 
+echo "Creating user account..."
+useradd -m -G wheel -s /bin/bash "${USERNAME}"
+echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
+
+# Configure mkinitcpio for hibernation
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)/' /etc/mkinitcpio.conf
+mkinitcpio -P
+sleep 2
+
+# Install and configure GRUB
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+sleep 2
+echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
+
+# Calculate swapfile offset (critical for hibernation)
+SWAPFILE_OFFSET=\$(filefrag -v /swapfile | awk '{ if(\$1=="0:"){print \$4} }')
+sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$(blkid -s UUID -o value /dev/${DISK}2) resume_offset=\$SWAPFILE_OFFSET\"|" /etc/default/grub
+
+grub-mkconfig -o /boot/grub/grub.cfg
+sleep 2
+
+# Enable systemd hibernation service (hypernate on lid close)
+mkdir -p /etc/systemd/logind.conf.d
+echo "[Login]" > /etc/systemd/logind.conf.d/hibernate.conf
+echo "HandleLidSwitch=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
+echo "HandleLidSwitchExternalPower=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
+
+# Enable services
+info "Enabling essential services..."
+systemctl enable NetworkManager || warn "Failed to enable NetworkManager"
+systemctl enable sshd || warn "Failed to enable sshd"
+
 EOF
 
 newTask "==================================================\n=================================================="
 newTask "==== FINALIZING INSTALLATION ===="
-
-# Set root password
-info "Set root password:"
-arch-chroot /mnt passwd || warn "Failed to set root password (can do manually later)"
 
 # Enable network manager (optional)
 arch-chroot /mnt systemctl enable NetworkManager.service || warn "NetworkManager not installed"
@@ -280,9 +366,13 @@ arch-chroot /mnt systemctl enable NetworkManager.service || warn "NetworkManager
 # Configure sudo (optional)
 echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sudo"
 
+sync
+sleep 2
+umount -R /mnt
+sleep 1
+
 newTask "==================================================\n==================================================\n"
 
 info "\n${GREEN}[✓] ARCH LINUX INSTALLATION COMPLETE!${NC}"
 echo
-info "run Unmount: umount -R /mnt"
-echo "then you can reboot."
+echo "you can now reboot."
