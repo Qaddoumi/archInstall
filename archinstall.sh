@@ -38,15 +38,74 @@ warn() {
     echo -e "${YELLOW}[WARN] $*${NC}"
 }
 
-# Check root
+newTask "==================================================\n=================================================="
+
+info "Checking for root privileges"
 [[ $(id -u) -eq 0 ]] || error "This script must be run as root"
 
-# Verify internet
+info "Checking internet connection"
 if ! ping -c 1 archlinux.org &>/dev/null; then
     warn "No internet connection detected!"
     read -rp "Continue without internet? (not recommended) [y/N]: " NO_NET
     [[ "$NO_NET" == "y" ]] || error "Aborted"
 fi
+
+newTask "==================================================\n=================================================="
+
+info "Configuring mirrors..."
+info "Available regions:"
+echo "1) United States"
+echo "2) Germany"
+echo "3) United Kingdom"
+echo "4) Jordan"
+echo "5) Netherlands"
+
+read -rp "Select mirror region [1-5] (press Enter for United States): " REGION_CHOICE
+
+# Default to United States (1) if empty
+REGION_CHOICE=${REGION_CHOICE:-1}
+
+case $REGION_CHOICE in
+    1) REGION="United States" ;;
+    2) REGION="Germany" ;;
+    3) REGION="United Kingdom" ;;
+    4) REGION="Jordan" ;;
+    5) REGION="Netherlands" ;;
+    *) error "Invalid region selection" ;;
+esac
+
+
+info "Setting mirrors for $REGION"
+# Backup existing mirrorlist
+cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup || warn "Failed to backup mirrorlist"
+
+# Update mirrorlist with selected region
+curl -s "https://archlinux.org/mirrorlist/?country=${REGION// /%20}&protocol=https&use_mirror_status=on" | \
+    sed -e 's/^#Server/Server/' -e '/^#/d' > /etc/pacman.d/mirrorlist || \
+    warn "Failed to update mirrorlist"
+
+# Verify mirrorlist is not empty
+if [[ ! -s /etc/pacman.d/mirrorlist ]]; then
+    warn "Generated mirrorlist is empty, restoring backup"
+    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
+    warn "Mirror configuration failed"
+fi
+
+info "Testing mirror connectivity..."
+if ! pacman -Sy --noconfirm &>/dev/null; then
+    warn "Mirror test failed, restoring backup"
+    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
+    warn "Unable to connect to configured mirrors"
+fi
+
+info "Mirror configuration completed successfully"
+
+newTask "==================================================\n=================================================="
+
+info "Updating package databases..."
+pacman -Sy || warn "Failed to update package databases"
+
+newTask "==================================================\n=================================================="
 
 while true; do
     read -rsp "Enter root password: " ROOT_PASSWORD
@@ -336,7 +395,10 @@ esac
 info "Detected ${GPU_PKGS}, Install the proper video drivers"
 
 # Base packages
-BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs networkmanager sudo nano git openssh vim wget"
+BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring networkmanager \
+    sudo nano git openssh vim wget \
+    pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber \
+    xdg-desktop-portal xdg-desktop-portal-gtk"
 
 # Combine packages, filtering out empty ones
 INSTALL_PKGS="$BASE_PKGS"
@@ -567,6 +629,13 @@ newTask "==================================================\n===================
 
 info "Enabling NetworkManager service"
 arch-chroot /mnt systemctl enable NetworkManager || warn "NetworkManager not installed"
+
+info "Enable PipeWire services"
+arch-chroot /mnt /bin/bash <<PIPWIREEOF
+systemctl --user enable pipewire.service
+systemctl --user enable pipewire-pulse.service
+systemctl --user enable wireplumber.service
+PIPWIREEOF
 
 info "Configuring sudo for user $USERNAME"
 echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sudo"
