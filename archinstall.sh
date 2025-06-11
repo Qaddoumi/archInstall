@@ -291,16 +291,7 @@ info "Detected ${GPU_PKGS}, Install the proper video drivers"
 
 # Base packages
 BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs networkmanager sudo nano git openssh vim wget"
-# Ensure all packages are available
-for pkg in $BASE_PKGS $UCODE_PKG $GPU_PKGS; do
-    if ! pacman -Si "$pkg" &>/dev/null; then
-        warn "Package $pkg not found in repositories, skipping"
-        case "$pkg" in
-            intel-ucode|amd-ucode) UCODE_PKG="" ;;
-            nvidia|nvidia-utils|xf86-video-amdgpu|xf86-video-intel) GPU_PKGS="" ;;
-        esac
-    fi
-done
+
 # Combine packages, filtering out empty ones
 INSTALL_PKGS="$BASE_PKGS"
 [[ -n "$UCODE_PKG" ]] && INSTALL_PKGS="$INSTALL_PKGS $UCODE_PKG"
