@@ -216,8 +216,8 @@ newTask "==================================================\n===================
 
 # Formatting
 info "Formatting partitions"
-mkfs.fat -F32 "/dev/${DISK}1" || error "EFI format failed"
-mkfs.ext4 -F "/dev/${DISK}2" || error "Root format failed"
+mkfs.fat -F32 "$BOOT_PART" || error "EFI format failed"
+mkfs.ext4 -F "$ROOT_PART" || error "Root format failed"
 sleep 2
 
 newTask "==================================================\n==================================================\n"
