@@ -380,6 +380,38 @@ sleep 2
 
 newTask "==================================================\n=================================================="
 
+# Detect environment and hardware
+info "Detecting system environment..."
+
+# Check for virtual environment
+if systemd-detect-virt --vm &>/dev/null; then
+    VIRT_TYPE=$(systemd-detect-virt)
+    info "Virtual machine detected: $VIRT_TYPE"
+    case "$VIRT_TYPE" in
+        "kvm"|"qemu")
+            VIRT_PKGS="qemu-guest-agent virtio-drivers"
+            ;;
+        "virtualbox")
+            VIRT_PKGS="virtualbox-guest-utils-nox"
+            ;;
+        "vmware")
+            VIRT_PKGS="open-vm-tools"
+            ;;
+        *)
+            VIRT_PKGS=""
+            warn "Unknown virtualization platform: $VIRT_TYPE"
+            ;;
+    esac
+    
+    # Add SPICE agent if SPICE is detected
+    if [[ -e "/dev/virtio-ports/org.spice-space.webdav.0" ]]; then
+        VIRT_PKGS="$VIRT_PKGS spice-vdagent"
+    fi
+else
+    info "Running on physical hardware"
+    VIRT_PKGS=""
+fi
+
 # Install essential packages
 CPU_VENDOR=$(grep -m 1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
 info "Detected CPU vendor: $CPU_VENDOR"
@@ -399,16 +431,20 @@ case "$GPU_TYPE" in
 esac
 info "Detected ${GPU_PKGS}, Install the proper video drivers"
 
+info "Installing pipwire for audio management"
+PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
+info "Installing xdg-desktop-portal for sandboxed applications"
+XDGP_PORTAL_PKGS="xdg-desktop-portal xdg-desktop-portal-gtk"
+
 # Base packages
 BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring networkmanager \
-    sudo nano git openssh vim wget \
-    pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber \
-    xdg-desktop-portal xdg-desktop-portal-gtk"
+    sudo nano git openssh vim wget"
 
 # Combine packages, filtering out empty ones
-INSTALL_PKGS="$BASE_PKGS"
+INSTALL_PKGS="$BASE_PKGS $PIPWIRE_PKGS $XDGP_PORTAL_PKGS"
 [[ -n "$UCODE_PKG" ]] && INSTALL_PKGS="$INSTALL_PKGS $UCODE_PKG"
 [[ -n "$GPU_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $GPU_PKGS"
+[[ -n "$VIRT_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $VIRT_PKGS"
 info "Installing: $INSTALL_PKGS"
 pacstrap /mnt $INSTALL_PKGS || error "Package installation failed"
 sleep 2
