@@ -89,17 +89,6 @@ lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
 read -rp "Enter disk to wipe (e.g., vda, sda, nvme0n1): " DISK
 [[ -e "/dev/$DISK" ]] || error "Disk /dev/$DISK not found"
 
-# Update partition naming
-if [[ "$DISK" =~ "nvme" ]]; then
-    BIOS_PART="/dev/${DISK}p1"
-    BOOT_PART="/dev/${DISK}p2"
-    ROOT_PART="/dev/${DISK}p3"
-else
-    BIOS_PART="/dev/${DISK}1"
-    BOOT_PART="/dev/${DISK}2"
-    ROOT_PART="/dev/${DISK}3"
-fi
-
 # Show disk info
 info "\nSelected disk layout:"
 lsblk "/dev/$DISK"
@@ -194,6 +183,28 @@ sleep 2
 
 newTask "==================================================\n==================================================\n"
 
+info "Detecting boot mode..."
+if [[ -d "/sys/firmware/efi" ]]; then
+    BOOT_MODE="UEFI"
+    info "UEFI boot mode detected"
+else
+    BOOT_MODE="BIOS"
+    info "BIOS/Legacy boot mode detected"
+fi
+
+newTask "==================================================\n==================================================\n"
+
+# Update partition naming (fix for NVMe disks)
+if [[ "$DISK" =~ "nvme" ]]; then
+    PART1="/dev/${DISK}p1"
+    PART2="/dev/${DISK}p2"
+    PART3="/dev/${DISK}p3"
+else
+    PART1="/dev/${DISK}1"
+    PART2="/dev/${DISK}2"
+    PART3="/dev/${DISK}3"
+fi
+
 # Partitioning
 info "Creating new GPT partition table..."
 parted -s "/dev/$DISK" mklabel gpt || error "Partitioning failed"
@@ -201,53 +212,95 @@ sleep 2
 
 newTask "==================================================\n=================================================="
 
-# Custom partition sizes
-BIOS_BOOT_SIZE="2M"    # New BIOS boot partition
-EFI_SIZE="2G"
-ROOT_SIZE="100%"
-
-info "Creating partitions"
-# BIOS Boot Partition (required for GRUB on GPT)
-parted -s "/dev/$DISK" mkpart primary 1MiB "$BIOS_BOOT_SIZE" || error "BIOS boot partition failed"
-parted -s "/dev/$DISK" set 1 bios_grub on
-
-# EFI Partition
-parted -s "/dev/$DISK" mkpart primary fat32 "$BIOS_BOOT_SIZE" "$EFI_SIZE" || error "EFI partition failed"
-parted -s "/dev/$DISK" set 2 esp on
-
-# Root Partition
-parted -s "/dev/$DISK" mkpart primary ext4 "$EFI_SIZE" "$ROOT_SIZE" || error "Root partition failed"
-sleep 2
-
-newTask "==================================================\n=================================================="
-
-# Formatting
-info "Formatting partitions"
-mkfs.fat -F32 "$BOOT_PART" || error "EFI format failed"
-mkfs.ext4 -F "$ROOT_PART" || error "Root format failed"
-sleep 2
+if [[ "$BOOT_MODE" == "UEFI" ]]; then
+    # UEFI partitioning scheme
+    info "Creating UEFI partitions..."
+    
+    # EFI System Partition
+    EFI_SIZE="2G"
+    ROOT_SIZE="100%"
+    
+    info "Creating EFI System Partition (2G)"
+    parted -s "/dev/$DISK" mkpart primary fat32 1MiB "$EFI_SIZE" || error "EFI partition failed"
+    parted -s "/dev/$DISK" set 1 esp on || error "Failed to set ESP flag"
+    
+    info "Creating root partition"
+    parted -s "/dev/$DISK" mkpart primary ext4 "$EFI_SIZE" "$ROOT_SIZE" || error "Root partition failed"
+    
+    # Set partition variables for UEFI
+    EFI_PART="$PART1"
+    ROOT_PART="$PART2"
+    
+    info "Formatting UEFI partitions..."
+    mkfs.fat -F32 "$EFI_PART" || error "EFI format failed"
+    mkfs.ext4 -F "$ROOT_PART" || error "Root format failed"
+    
+    info "Mounting UEFI partitions..."
+    mkdir -p /mnt || error "Failed to create /mnt"
+    mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
+    mkdir -p /mnt/boot/efi || error "Failed to create /mnt/boot/efi"
+    mount "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
+    
+else
+    # BIOS partitioning scheme
+    info "Creating BIOS partitions..."
+    
+    # BIOS Boot Partition + Boot + Root
+    BIOS_BOOT_SIZE="2MiB"
+    BOOT_SIZE="2G"
+    ROOT_SIZE="100%"
+    
+    info "Creating BIOS boot partition (2MiB)"
+    parted -s "/dev/$DISK" mkpart primary 1MiB "$BIOS_BOOT_SIZE" || error "BIOS boot partition failed"
+    parted -s "/dev/$DISK" set 1 bios_grub on || error "Failed to set bios_grub flag"
+    
+    info "Creating boot partition (2G)"
+    parted -s "/dev/$DISK" mkpart primary ext4 "$BIOS_BOOT_SIZE" "$BOOT_SIZE" || error "Boot partition failed"
+    
+    info "Creating root partition"
+    parted -s "/dev/$DISK" mkpart primary ext4 "$BOOT_SIZE" "$ROOT_SIZE" || error "Root partition failed"
+    
+    # Set partition variables for BIOS
+    BIOS_PART="$PART1"
+    BOOT_PART="$PART2"
+    ROOT_PART="$PART3"
+    
+    info "Formatting BIOS partitions..."
+    # BIOS boot partition is not formatted (raw)
+    mkfs.ext4 -F "$BOOT_PART" || error "Boot format failed"
+    mkfs.ext4 -F "$ROOT_PART" || error "Root format failed"
+    
+    info "Mounting BIOS partitions..."
+    mkdir -p /mnt || error "Failed to create /mnt"
+    mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
+    mkdir -p /mnt/boot || error "Failed to create /mnt/boot"
+    mount "$BOOT_PART" /mnt/boot || error "Failed to mount boot partition"
+fi
 
 newTask "==================================================\n==================================================\n"
 
-# Verification
 info "Verifying new layout:"
 fdisk -l "/dev/$DISK" || error "Verification failed"
 
-newTask "==================================================\n==================================================\n"
-
-# Mounting partitions
-info "Mounting partitions for installation..."
-mkdir -p /mnt || error "Failed to create /mnt"
-mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
-mkdir -p /mnt/boot || error "Failed to create /mnt/boot"
-mount "$BOOT_PART" /mnt/boot || error "Failed to mount boot partition"
-
-# Verify mounts
 info "Verifying mounts:"
 findmnt | grep "/mnt" || error "Mount verification failed"
-sleep 2
-info "Partitions mounted successfully:"
+
+info "Partitions mounted successfully for $BOOT_MODE mode:"
 mount | grep "/dev/$DISK"
+
+newTask "==================================================\n==================================================\n"
+
+# Display summary
+info "\nPartitioning Summary:"
+info "Boot Mode: $BOOT_MODE"
+if [[ "$BOOT_MODE" == "UEFI" ]]; then
+    info "EFI System Partition: $EFI_PART (mounted at /mnt/boot/efi)"
+    info "Root Partition: $ROOT_PART (mounted at /mnt)"
+else
+    info "BIOS Boot Partition: $BIOS_PART (unformatted, for GRUB)"
+    info "Boot Partition: $BOOT_PART (mounted at /mnt/boot)"
+    info "Root Partition: $ROOT_PART (mounted at /mnt)"
+fi
 
 newTask "==================================================\n==================================================\n"
 
