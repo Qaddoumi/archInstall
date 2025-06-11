@@ -174,14 +174,14 @@ if ! cleanup_disks; then
     warn "Proceeding with disk operations despite cleanup warnings"
 fi
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 # Wipe disk
 info "Wiping disk signatures..."
 wipefs -a "/dev/$DISK" || error "Failed to wipe disk"
 sleep 2
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 info "Detecting boot mode..."
 if [[ -d "/sys/firmware/efi" ]]; then
@@ -192,7 +192,7 @@ else
     info "BIOS/Legacy boot mode detected"
 fi
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 # Update partition naming (fix for NVMe disks)
 if [[ "$DISK" =~ "nvme" ]]; then
@@ -291,7 +291,7 @@ mount | grep "/dev/$DISK"
 newTask "==================================================\n==================================================\n"
 
 # Display summary
-info "\nPartitioning Summary:"
+info "Partitioning Summary:"
 info "Boot Mode: $BOOT_MODE"
 if [[ "$BOOT_MODE" == "UEFI" ]]; then
     info "EFI System Partition: $EFI_PART (mounted at /mnt/boot/efi)"
@@ -498,7 +498,7 @@ if [[ -z "\$ROOT_UUID" ]]; then
 fi
 
 # Calculate swapfile offset (critical for hibernation)
-echo "Calculating swapfile offset for hibernation..."
+info "Calculating swapfile offset for hibernation"
 if [[ ! -f /swapfile ]]; then
     warn "Swapfile not found at /swapfile"
     SWAPFILE_OFFSET=""
@@ -536,29 +536,10 @@ fi
 
 # Generate GRUB config with proper path
 info "Generating GRUB configuration for \$BOOT_MODE mode"
-if [[ "\$BOOT_MODE" == "UEFI" ]]; then
-    # Detect ESP mount point dynamically
-    ESP_MOUNT=$(findmnt -n -o TARGET /dev/disk/by-partlabel/EFI\ System\ Partition 2>/dev/null || findmnt -n -o TARGET -t vfat 2>/dev/null | grep -i 'efi' | head -n1)
-    
-    if [[ -z "\$ESP_MOUNT" ]]; then
-        error "Could not detect ESP mount point"
-    fi
-    
-    # Construct GRUB config path
-    ESP_PATH="\${ESP_MOUNT}/EFI/GRUB/grub.cfg"
-    
-    # Ensure directory exists
-    mkdir -p "$(dirname "\$ESP_PATH")" || error "Failed to create GRUB directory"
-    
-    info "Detected ESP at: \$ESP_MOUNT"
-    info "Using GRUB config path: \$ESP_PATH"
-    
-    # Generate config
-    grub-mkconfig -o "\$ESP_PATH" || error "Failed to generate GRUB configuration for UEFI"
-else
-    # For BIOS, standard path
-    grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration for BIOS"
-fi
+mkdir -p /boot/grub || error "Failed to create /boot/grub directory"
+grub-mkconfig -o /boot/grub/grub.cfg || {
+    error "Failed to generate GRUB configuration for UEFI"
+}
 sleep 2
 
 # (hypernate on lid close)
