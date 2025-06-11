@@ -273,6 +273,12 @@ newTask "==================================================\n===================
 # Install essential packages
 CPU_VENDOR=$(grep -m 1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
 info "Detected CPU vendor: $CPU_VENDOR"
+# Fix microcode package naming
+case "$CPU_VENDOR" in
+    "GenuineIntel") UCODE_PKG="intel-ucode" ;;
+    "AuthenticAMD") UCODE_PKG="amd-ucode" ;;
+    *) UCODE_PKG=""; warn "Unknown CPU vendor: $CPU_VENDOR" ;;
+esac
 
 GPU_TYPE=$(lspci | grep -E "VGA|3D" | awk -F': ' '{print $2}')
 case "$GPU_TYPE" in
@@ -285,9 +291,22 @@ info "Detected ${GPU_PKGS}, Install the proper video drivers"
 
 # Base packages
 BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs networkmanager sudo nano git openssh vim wget"
-UCODE_PKG="${CPU_VENDOR,,}-ucode"  # intel-ucode or amd-ucode
-info "Installing: $BASE_PKGS $UCODE_PKG $GPU_PKGS"
-pacstrap /mnt $BASE_PKGS $UCODE_PKG $GPU_PKGS || error "Package installation failed"
+# Ensure all packages are available
+for pkg in $BASE_PKGS $UCODE_PKG $GPU_PKGS; do
+    if ! pacman -Si "$pkg" &>/dev/null; then
+        warn "Package $pkg not found in repositories, skipping"
+        case "$pkg" in
+            intel-ucode|amd-ucode) UCODE_PKG="" ;;
+            nvidia|nvidia-utils|xf86-video-amdgpu|xf86-video-intel) GPU_PKGS="" ;;
+        esac
+    fi
+done
+# Combine packages, filtering out empty ones
+INSTALL_PKGS="$BASE_PKGS"
+[[ -n "$UCODE_PKG" ]] && INSTALL_PKGS="$INSTALL_PKGS $UCODE_PKG"
+[[ -n "$GPU_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $GPU_PKGS"
+info "Installing: $INSTALL_PKGS"
+pacstrap /mnt $INSTALL_PKGS || error "Package installation failed"
 sleep 2
 
 # Ensure /mnt/etc exists before generating fstab
