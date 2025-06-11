@@ -290,7 +290,7 @@ esac
 info "Detected ${GPU_PKGS}, Install the proper video drivers"
 
 # Base packages
-BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober networkmanager sudo nano git openssh vim wget"
+BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs networkmanager sudo nano git openssh vim wget"
 UCODE_PKG="${CPU_VENDOR,,}-ucode"  # intel-ucode or amd-ucode
 info "Installing: $BASE_PKGS $UCODE_PKG $GPU_PKGS"
 pacstrap /mnt $BASE_PKGS $UCODE_PKG $GPU_PKGS || error "Package installation failed"
