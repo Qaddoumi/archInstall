@@ -199,7 +199,7 @@ info "Creating new GPT partition table..."
 parted -s "/dev/$DISK" mklabel gpt || error "Partitioning failed"
 sleep 2
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 # Custom partition sizes
 BIOS_BOOT_SIZE="2M"    # New BIOS boot partition
@@ -219,7 +219,7 @@ parted -s "/dev/$DISK" set 2 esp on
 parted -s "/dev/$DISK" mkpart primary ext4 "$EFI_SIZE" "$ROOT_SIZE" || error "Root partition failed"
 sleep 2
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 # Formatting
 info "Formatting partitions"
