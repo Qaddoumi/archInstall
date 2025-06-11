@@ -398,7 +398,7 @@ sync
 sleep 2
 
 # Cleanup will run automatically due to trap
-# cleanup  # Remove this line as it's redundant
+# cleanup  # no need to uncommit this line as it's redundant
 sleep 1
 
 newTask "==================================================\n==================================================\n"
