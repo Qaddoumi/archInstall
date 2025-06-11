@@ -477,11 +477,11 @@ info "Installing xdg-desktop-portal for sandboxed applications"
 XDGP_PORTAL_PKGS="xdg-desktop-portal xdg-desktop-portal-gtk"
 
 # Base packages
-BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring networkmanager \
-    sudo nano git openssh vim wget"
+BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring"
+OPTIONAL_PKGS="htop networkmanager sudo nano git openssh vim wget"
 
 # Combine packages, filtering out empty ones
-INSTALL_PKGS="$BASE_PKGS $PIPWIRE_PKGS $XDGP_PORTAL_PKGS"
+INSTALL_PKGS="$BASE_PKGS $OPTIONAL_PKGS $PIPWIRE_PKGS $XDGP_PORTAL_PKGS"
 [[ -n "$UCODE_PKG" ]] && INSTALL_PKGS="$INSTALL_PKGS $UCODE_PKG"
 [[ -n "$GPU_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $GPU_PKGS"
 [[ -n "$VIRT_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $VIRT_PKGS"
@@ -741,4 +741,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5 ###
+### version 0.5.1 ###
