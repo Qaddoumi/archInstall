@@ -288,7 +288,7 @@ findmnt | grep "/mnt" || error "Mount verification failed"
 info "Partitions mounted successfully for $BOOT_MODE mode:"
 mount | grep "/dev/$DISK"
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 # Display summary
 info "Partitioning Summary:"
@@ -302,7 +302,7 @@ else
     info "Root Partition: $ROOT_PART (mounted at /mnt)"
 fi
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 # Create swap file with hibernation support
 info "Creating swap file with hibernation support..."
