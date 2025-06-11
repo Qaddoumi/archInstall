@@ -603,3 +603,6 @@ info "3. Check GPU: lspci -k | grep -A 3 -E '(VGA|3D)'"
 info "\nRemember your credentials:"
 info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
+
+
+### version 0.4 
