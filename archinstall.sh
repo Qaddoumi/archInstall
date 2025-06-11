@@ -89,13 +89,15 @@ lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
 read -rp "Enter disk to wipe (e.g., vda, sda, nvme0n1): " DISK
 [[ -e "/dev/$DISK" ]] || error "Disk /dev/$DISK not found"
 
-# Add NVMe partition naming handler here
+# Update partition naming
 if [[ "$DISK" =~ "nvme" ]]; then
-    BOOT_PART="/dev/${DISK}p1"
-    ROOT_PART="/dev/${DISK}p2"
+    BIOS_PART="/dev/${DISK}p1"
+    BOOT_PART="/dev/${DISK}p2"
+    ROOT_PART="/dev/${DISK}p3"
 else
-    BOOT_PART="/dev/${DISK}1"
-    ROOT_PART="/dev/${DISK}2"
+    BIOS_PART="/dev/${DISK}1"
+    BOOT_PART="/dev/${DISK}2"
+    ROOT_PART="/dev/${DISK}3"
 fi
 
 # Show disk info
@@ -200,13 +202,18 @@ sleep 2
 newTask "==================================================\n==================================================\n"
 
 # Custom partition sizes
-EFI_SIZE="2G"  # Adjust as needed
-ROOT_SIZE="100%"  # Remainder for root
+BIOS_BOOT_SIZE="2M"    # New BIOS boot partition
+EFI_SIZE="2G"
+ROOT_SIZE="100%"
 
 info "Creating partitions"
+# BIOS Boot Partition (required for GRUB on GPT)
+parted -s "/dev/$DISK" mkpart primary 1MiB "$BIOS_BOOT_SIZE" || error "BIOS boot partition failed"
+parted -s "/dev/$DISK" set 1 bios_grub on
+
 # EFI Partition
-parted -s "/dev/$DISK" mkpart primary fat32 1MiB "$EFI_SIZE" || error "EFI partition failed"
-parted -s "/dev/$DISK" set 1 esp on
+parted -s "/dev/$DISK" mkpart primary fat32 "$BIOS_BOOT_SIZE" "$EFI_SIZE" || error "EFI partition failed"
+parted -s "/dev/$DISK" set 2 esp on
 
 # Root Partition
 parted -s "/dev/$DISK" mkpart primary ext4 "$EFI_SIZE" "$ROOT_SIZE" || error "Root partition failed"
@@ -230,10 +237,14 @@ newTask "==================================================\n===================
 
 # Mounting partitions
 info "Mounting partitions for installation..."
-mkdir -p /mnt
+mkdir -p /mnt || error "Failed to create /mnt"
 mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
-mkdir -p /mnt/boot
+mkdir -p /mnt/boot || error "Failed to create /mnt/boot"
 mount "$BOOT_PART" /mnt/boot || error "Failed to mount boot partition"
+
+# Verify mounts
+info "Verifying mounts:"
+findmnt | grep "/mnt" || error "Mount verification failed"
 sleep 2
 info "Partitions mounted successfully:"
 mount | grep "/dev/$DISK"
