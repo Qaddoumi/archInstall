@@ -582,7 +582,8 @@ info "==== FINALIZING INSTALLATION ===="
 info "Enabling NetworkManager service"
 arch-chroot /mnt systemctl enable NetworkManager || warn "NetworkManager not installed"
 
-# Configure sudo (optional)
+# Configure sudo 
+info "Configuring sudo for user $USERNAME"
 echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sudo"
 
 # Ensure all writes are committed to disk before cleanup
