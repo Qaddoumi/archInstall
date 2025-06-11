@@ -7,7 +7,7 @@ script to install arch
 bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/archInstall/main/archinstall.sh)
 ```
 
-# Task :
+# Tasks :
 ## [ ] chose between GRUB and systemd
 ## [ ] handling secure boot
 ## [ ] make sure hibernate works
