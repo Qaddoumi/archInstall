@@ -261,14 +261,8 @@ create_swap() {
     mkswap "$swapfile" || error "Failed to format swap file"
     swapon "$swapfile" || error "Failed to activate swap"
     
-    # Add to fstab (commented out by default)
-    echo "# Swap file for hibernation" >> /mnt/etc/fstab
-    echo "$swapfile none swap defaults 0 0" >> /mnt/etc/fstab
-    echo "resume=UUID=$(blkid -s UUID -o value /dev/${DISK}2)" >> /mnt/etc/default/grub
-    
     info "Swap file created successfully:"
     swapon --show
-    info "Hibernation support configured in fstab and GRUB"
 }
 
 create_swap
@@ -310,17 +304,37 @@ info "==== CHROOT SETUP ===="
 info "Configuring GRUB and hibernation in chroot..."
 arch-chroot /mnt /bin/bash <<EOF || error "Chroot commands failed"
 
+# Color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # rest the color to default
+
+error() {
+    echo -e "${RED}[ERROR] $*${NC}" >&2
+    exit 1
+}
+info() {
+    echo -e "${GREEN}[*] $*${NC}"
+}
+newTask() {
+    echo -e "${GREEN}$*${NC}"
+}
+warn() {
+    echo -e "${YELLOW}[WARN] $*${NC}"
+}
+
 TIMEZONE="Asia/Amman"
 LOCALE="en_US.UTF-8"
 HOSTNAME="${USERNAME}Arch"
 
 # Set timezone
-echo "Setting timezone to ${TIMEZONE}..."
+info "Setting timezone to ${TIMEZONE}..."
 ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
 hwclock --systohc
 
 # Set locale
-echo "Setting locale to ${LOCALE}..."
+info "Setting locale to ${LOCALE}..."
 sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen
 locale-gen
 echo "LANG=${LOCALE}" > /etc/locale.conf
@@ -337,51 +351,113 @@ cat <<HOSTSEOF > /etc/hosts
 HOSTSEOF
 
 # Set root password
-echo "Setting root password..."
+info "Setting root password..."
 echo "root:${ROOT_PASSWORD}" | chpasswd
 
 # Create user 
-echo "Creating user account..."
+info "Creating user account..."
 useradd -m -G wheel -s /bin/bash "${USERNAME}"
 echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
 
 # Configure mkinitcpio for hibernation
-echo "Configuring mkinitcpio for hibernation..."
+info "Configuring mkinitcpio for hibernation"
 sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)/' /etc/mkinitcpio.conf
 mkinitcpio -P
 sleep 2
 
 # Install and configure GRUB
 # GRUB
-echo "Installing GRUB bootloader..."
+info "Installing GRUB bootloader..."
 if [[ -d /sys/firmware/efi ]]; then
-    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB || {
+        error "GRUB installation failed"
+    }
 else
-    grub-install --target=i386-pc "/dev/$DISK"
+    grub-install --target=i386-pc "/dev/$DISK" || {
+        error "GRUB installation failed"
+    }
 fi
 sleep 2
+
+# Configure GRUB for dual boot
+info "Configuring GRUB for dual boot"
 echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
+
+# Now configure hibernation with proper error checking
+info "Configuring hibernation..."
+# Get root partition UUID
+ROOT_UUID=\$(blkid -s UUID -o value "${ROOT_PART}")
+if [[ -z "\$ROOT_UUID" ]]; then
+    error "Could not get root partition UUID"
+fi
 
 # Calculate swapfile offset (critical for hibernation)
 echo "Calculating swapfile offset for hibernation..."
-SWAPFILE_OFFSET=\$(filefrag -v /swapfile | awk '{ if(\$1=="0:"){print \$4} }')
-sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$(blkid -s UUID -o value /dev/${DISK}2) resume_offset=\$SWAPFILE_OFFSET\"|" /etc/default/grub
+if [[ ! -f /swapfile ]]; then
+    error "Swapfile not found at /swapfile"
+fi
 
-grub-mkconfig -o /boot/grub/grub.cfg
+# Check if filefrag is available
+if ! command -v filefrag >/dev/null 2>&1; then
+    error "filefrag command not found. Installing e2fsprogs..."
+    pacman -S --noconfirm e2fsprogs || {
+        error "Failed to install e2fsprogs"
+    }
+fi
+
+# Get swapfile offset with multiple methods for robustness
+SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk 'NR==4 {gsub(/\\.\\.*/, "", \$4); print \$4}')
+# Alternative method if first fails
+if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+    warn "First method failed, trying alternative..."
+    SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk '/^ *0:/ {print \$4}' | sed 's/\\.\\.//')
+fi
+# Final validation
+if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+    warn " Could not determine swapfile offset. Hibernation may not work."
+    info "You can calculate it manually later with: filefrag -v /swapfile"
+    # Set default GRUB config without hibernation
+    sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/' /etc/default/grub
+else
+    info "Swapfile offset: \$SWAPFILE_OFFSET"
+    # Configure GRUB with hibernation support
+    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET\"/" /etc/default/grub
+fi
+
+# Generate GRUB config
+echo "Generating GRUB configuration"
+grub-mkconfig -o /boot/grub/grub.cfg  || {
+    error "Failed to generate GRUB configuration"
+}
 sleep 2
 
-# Enable systemd hibernation service (hypernate on lid close)
-echo "Configuring systemd for hibernation on lid close..."
-mkdir -p /etc/systemd/logind.conf.d
-echo "[Login]" > /etc/systemd/logind.conf.d/hibernate.conf
-echo "HandleLidSwitch=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
-echo "HandleLidSwitchExternalPower=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
+# (hypernate on lid close)
+# Configure systemd for hibernation on lid close (only if hibernation is properly configured)
+if [[ -n "\$SWAPFILE_OFFSET" ]] && [[ "\$SWAPFILE_OFFSET" != "0" ]]; then
+    info "Configuring systemd for hibernation on lid close..."
+    mkdir -p /etc/systemd/logind.conf.d
+    cat > /etc/systemd/logind.conf.d/hibernate.conf <<HIBERNATEEOF
+[Login]
+HandleLidSwitch=hibernate
+HandleLidSwitchExternalPower=hibernate
+HIBERNATEEOF
+    info "Hibernation configured successfully"
+else
+    warn "Skipping hibernation configuration due to swapfile offset issues"
+fi
 
 # Enable services
 echo "Enabling openssh service"
 systemctl enable sshd || warn "Failed to enable sshd"
 
 EOF
+
+# Add swapfile entry to fstab for hibernation
+echo "Configuring fstab for hibernation support" 
+echo "# Swap file for hibernation" >> /mnt/etc/fstab
+echo "/swapfile none swap defaults 0 0" >> /mnt/etc/fstab
+echo "resume=UUID=$(blkid -s UUID -o value ${ROOT_PART})" >> /mnt/etc/default/grub
+info "Hibernation support configured in fstab and GRUB"
 
 newTask "==================================================\n=================================================="
 info "==== FINALIZING INSTALLATION ===="
