@@ -436,7 +436,7 @@ if systemd-detect-virt --vm &>/dev/null; then
     info "Virtual machine detected: $VIRT_TYPE"
     case "$VIRT_TYPE" in
         "kvm"|"qemu")
-            VIRT_PKGS="qemu-guest-agent virtio-drivers"
+            VIRT_PKGS="qemu-guest-agent"
             ;;
         "virtualbox")
             VIRT_PKGS="virtualbox-guest-utils-nox"
@@ -741,4 +741,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5.1 ###
+### version 0.5.2 ###
