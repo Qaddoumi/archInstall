@@ -4,12 +4,22 @@
 # Version 0.4 - More robust cleanup handling
 
 set -uo pipefail  # Strict error handling
+trap 'cleanup' EXIT  # Ensure cleanup runs on exit
 
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # rest the color to default
+
+# Security cleanup function
+cleanup() {
+    unset ROOT_PASSWORD USER_PASSWORD  # Wipe passwords from memory
+    sync
+    if mountpoint -q /mnt; then
+        umount -R /mnt 2>/dev/null
+    fi
+}
 
 error() {
     echo -e "${RED}[ERROR] $*${NC}" >&2
@@ -31,32 +41,45 @@ warn() {
 # Check root
 [[ $(id -u) -eq 0 ]] || error "This script must be run as root"
 
-read -rsp "Enter root password: " ROOT_PASSWORD
-echo
-read -rsp "Confirm root password: " ROOT_PASSWORD_CONFIRM
-echo
-if [[ "$ROOT_PASSWORD" != "$ROOT_PASSWORD_CONFIRM" ]]; then
-    error "Root passwords do not match. Aborting."
-fi
-if [[ -z "$ROOT_PASSWORD" ]]; then
-    error "Root password cannot be empty. Aborting."
+# Verify internet
+if ! ping -c 1 archlinux.org &>/dev/null; then
+    warn "No internet connection detected!"
+    read -rp "Continue without internet? (not recommended) [y/N]: " NO_NET
+    [[ "$NO_NET" == "y" ]] || error "Aborted"
 fi
 
-# Ask for username
+# Root password
+while true; do
+    read -rsp "Enter root password: " ROOT_PASSWORD
+    echo
+    [[ -n "$ROOT_PASSWORD" ]] || { warn "Password cannot be empty"; continue; }
+    
+    read -rsp "Confirm root password: " ROOT_PASSWORD_CONFIRM
+    echo
+    [[ "$ROOT_PASSWORD" == "$ROOT_PASSWORD_CONFIRM" ]] && break
+    warn "Passwords don't match!"
+done
+
+# User account
 read -rp "Enter username: " USERNAME
+[[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] || error "Invalid username"
 
-# Ask for user password
-read -rsp "Enter password for $USERNAME: " USER_PASSWORD
-echo
-read -rsp "Confirm password for $USERNAME: " USER_PASSWORD_CONFIRM
-echo
-if [[ "$USER_PASSWORD" != "$USER_PASSWORD_CONFIRM" ]]; then
-    error "User passwords do not match. Aborting."
-fi
+while true; do
+    read -rsp "Enter password for $USERNAME: " USER_PASSWORD
+    echo
+    [[ -n "$USER_PASSWORD" ]] || { warn "Password cannot be empty"; continue; }
+    
+    read -rsp "Confirm password: " USER_PASSWORD_CONFIRM
+    echo
+    [[ "$USER_PASSWORD" == "$USER_PASSWORD_CONFIRM" ]] && break
+    warn "Passwords don't match!"
+done
 
 export ROOT_PASSWORD
 export USERNAME
 export USER_PASSWORD
+
+newTask "==================================================\n==================================================\n"
 
 # List disks
 info "Available disks:"
@@ -86,7 +109,7 @@ read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'):
 newTask "==================================================\n==================================================\n"
  
 # Enhanced cleanup function
-cleanup() {
+cleanup_disks() {
     local attempts=3
     info "Starting cleanup process (3 attempts)...\n"
     
@@ -155,8 +178,8 @@ cleanup() {
     return 1
 }
 
-# Run cleanup
-if ! cleanup; then
+# Run cleanup to clean the disk
+if ! cleanup_disks; then
     warn "Proceeding with disk operations despite cleanup warnings"
 fi
 
@@ -180,7 +203,7 @@ newTask "==================================================\n===================
 EFI_SIZE="2G"  # Adjust as needed
 ROOT_SIZE="100%"  # Remainder for root
 
-info "Creating partitions:"
+info "Creating partitions"
 # EFI Partition
 parted -s "/dev/$DISK" mkpart primary fat32 1MiB "$EFI_SIZE" || error "EFI partition failed"
 parted -s "/dev/$DISK" set 1 esp on
@@ -192,7 +215,7 @@ sleep 2
 newTask "==================================================\n==================================================\n"
 
 # Formatting
-info "Formatting partitions:"
+info "Formatting partitions"
 mkfs.fat -F32 "/dev/${DISK}1" || error "EFI format failed"
 mkfs.ext4 -F "/dev/${DISK}2" || error "Root format failed"
 sleep 2
@@ -253,29 +276,24 @@ sleep 2
 
 newTask "==================================================\n=================================================="
 
-newTask "==== CONFIGURING GRUB & HIBERNATION ===="
-
 # Install essential packages
 CPU_VENDOR=$(grep -m 1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
 info "Detected CPU vendor: $CPU_VENDOR"
-info "Install the proper video drivers based on GPU type"
-GPU_TYPE=$(lspci | grep -E "VGA compatible controller" | awk '{print $5}')
-if [[ "$GPU_TYPE" == "NVIDIA" ]]; then
-    info "NVIDIA GPU detected. Installing NVIDIA drivers..."
-    GPU_PACKAGES="nvidia nvidia-utils"
-elif [[ "$GPU_TYPE" == "AMD" ]]; then
-    info "AMD GPU detected. Installing AMD drivers..."
-    GPU_PACKAGES="xf86-video-amdgpu"
-elif [[ "$GPU_TYPE" == "Intel" ]]; then
-    info "Intel GPU detected. Installing Intel drivers..."
-    GPU_PACKAGES="xf86-video-intel"
-else
-    warn "Unknown GPU type: $GPU_TYPE. Skipping GPU driver installation."
-    GPU_PACKAGES=""
-fi
-info "Installing base system, GRUB and required packages..."
-pacstrap /mnt base linux linux-firmware grub efibootmgr os-prober \
-    networkmanager openssh sudo nano vim wget git ${CPU_VENDOR}-ucode ${GPU_PACKAGES} || error "Failed to install base packages"
+
+GPU_TYPE=$(lspci | grep -E "VGA|3D" | awk -F': ' '{print $2}')
+case "$GPU_TYPE" in
+    *NVIDIA*) GPU_PKGS="nvidia nvidia-utils" ;;
+    *AMD*)    GPU_PKGS="xf86-video-amdgpu" ;;
+    *Intel*)  GPU_PKGS="xf86-video-intel" ;;
+    *)        GPU_PKGS=""; warn "Unknown GPU: $GPU_TYPE" ;;
+esac
+info "Detected ${GPU_PKGS}, Install the proper video drivers"
+
+# Base packages
+BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober networkmanager sudo nano git openssh vim wget"
+UCODE_PKG="${CPU_VENDOR,,}-ucode"  # intel-ucode or amd-ucode
+info "Installing: $BASE_PKGS $UCODE_PKG $GPU_PKGS"
+pacstrap /mnt $BASE_PKGS $UCODE_PKG $GPU_PKGS || error "Package installation failed"
 sleep 2
 
 # Ensure /mnt/etc exists before generating fstab
@@ -285,8 +303,8 @@ mkdir -p /mnt/etc
 info "Generating fstab"
 genfstab -U /mnt >> /mnt/etc/fstab || error "Failed to generate fstab"
 sleep 2
-newTask "==================================================\n==================================================\n"
-newTask "==== CHROOT SETUP ===="
+newTask "==================================================\n=================================================="
+info "==== CHROOT SETUP ===="
 
 # Chroot setup
 info "Configuring GRUB and hibernation in chroot..."
@@ -328,16 +346,24 @@ useradd -m -G wheel -s /bin/bash "${USERNAME}"
 echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
 
 # Configure mkinitcpio for hibernation
+echo "Configuring mkinitcpio for hibernation..."
 sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)/' /etc/mkinitcpio.conf
 mkinitcpio -P
 sleep 2
 
 # Install and configure GRUB
-grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+# GRUB
+echo "Installing GRUB bootloader..."
+if [[ -d /sys/firmware/efi ]]; then
+    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+else
+    grub-install --target=i386-pc "/dev/$DISK"
+fi
 sleep 2
 echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
 
 # Calculate swapfile offset (critical for hibernation)
+echo "Calculating swapfile offset for hibernation..."
 SWAPFILE_OFFSET=\$(filefrag -v /swapfile | awk '{ if(\$1=="0:"){print \$4} }')
 sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$(blkid -s UUID -o value /dev/${DISK}2) resume_offset=\$SWAPFILE_OFFSET\"|" /etc/default/grub
 
@@ -345,34 +371,43 @@ grub-mkconfig -o /boot/grub/grub.cfg
 sleep 2
 
 # Enable systemd hibernation service (hypernate on lid close)
+echo "Configuring systemd for hibernation on lid close..."
 mkdir -p /etc/systemd/logind.conf.d
 echo "[Login]" > /etc/systemd/logind.conf.d/hibernate.conf
 echo "HandleLidSwitch=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
 echo "HandleLidSwitchExternalPower=hibernate" >> /etc/systemd/logind.conf.d/hibernate.conf
 
 # Enable services
-info "Enabling essential services..."
-systemctl enable NetworkManager || warn "Failed to enable NetworkManager"
+echo "Enabling openssh service"
 systemctl enable sshd || warn "Failed to enable sshd"
 
 EOF
 
 newTask "==================================================\n=================================================="
-newTask "==== FINALIZING INSTALLATION ===="
+info "==== FINALIZING INSTALLATION ===="
 
-# Enable network manager (optional)
-arch-chroot /mnt systemctl enable NetworkManager.service || warn "NetworkManager not installed"
+# Enable network manager 
+info "Enabling NetworkManager service"
+arch-chroot /mnt systemctl enable NetworkManager || warn "NetworkManager not installed"
 
 # Configure sudo (optional)
 echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sudo"
 
+# Ensure all writes are committed to disk before cleanup
 sync
 sleep 2
-umount -R /mnt
+
+# Cleanup will run automatically due to trap
+# cleanup  # Remove this line as it's redundant
 sleep 1
 
 newTask "==================================================\n==================================================\n"
 
-info "\n${GREEN}[✓] ARCH LINUX INSTALLATION COMPLETE!${NC}"
-echo
-echo "you can now reboot."
+info "\n${GREEN}[✓] INSTALLATION COMPLETE!${NC}"
+info "\n${YELLOW}Next steps:${NC}"
+info "1. Reboot: systemctl reboot"
+info "2. Verify hibernation: sudo systemctl hibernate"
+info "3. Check GPU: lspci -k | grep -A 3 -E '(VGA|3D)'"
+info "\nRemember your credentials:"
+info "  Root password: Set during installation"
+info "  User: $USERNAME (with sudo privileges)"
