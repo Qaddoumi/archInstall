@@ -7,3 +7,7 @@ script to install arch
 bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/archInstall/main/archinstall.sh)
 ```
 
+# Task :
+## [ ] chose between GRUB and systemd
+## [ ] make sure hibernate works
+## [ ] make an optoin to chose the drivers for the GPU
