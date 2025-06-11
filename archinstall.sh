@@ -446,16 +446,41 @@ sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboa
 mkinitcpio -P
 sleep 2
 
-# Install and configure GRUB
-info "Installing GRUB bootloader"
+# Detect boot mode and set appropriate paths
+info "Detecting boot mode for GRUB installation..."
 if [[ -d /sys/firmware/efi ]]; then
-    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB || {
-        error "GRUB installation failed"
-    }
+    BOOT_MODE="UEFI"
+    info "UEFI boot mode detected"
+    # Check if EFI directory exists and is mounted
+    if [[ ! -d /boot/efi ]]; then
+        error "EFI directory /boot/efi not found. Make sure EFI partition is mounted at /boot/efi"
+    fi
+    if ! mountpoint -q /boot/efi; then
+        error "EFI partition not mounted at /boot/efi"
+    fi
 else
-    grub-install --target=i386-pc "/dev/$DISK" || {
-        error "GRUB installation failed"
+    BOOT_MODE="BIOS"
+    info "BIOS/Legacy boot mode detected"
+    # Check if DISK variable is available
+    if [[ -z "\$DISK" ]]; then
+        error "DISK variable not set. Please set DISK variable (e.g., DISK=sda)"
+    fi
+fi
+
+# Install and configure GRUB
+info "Installing GRUB bootloader for \$BOOT_MODE mode"
+if [[ "\$BOOT_MODE" == "UEFI" ]]; then
+    # UEFI installation
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable || {
+        error "GRUB UEFI installation failed"
     }
+    info "GRUB installed successfully for UEFI"
+else
+    # BIOS installation
+    grub-install --target=i386-pc "/dev/\$DISK" || {
+        error "GRUB BIOS installation failed"
+    }
+    info "GRUB installed successfully for BIOS"
 fi
 sleep 2
 
@@ -509,11 +534,31 @@ else
     sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET\"/" /etc/default/grub
 fi
 
-# Generate GRUB config
-echo "Generating GRUB configuration"
-grub-mkconfig -o /boot/grub/grub.cfg  || {
-    error "Failed to generate GRUB configuration"
-}
+# Generate GRUB config with proper path
+info "Generating GRUB configuration for \$BOOT_MODE mode"
+if [[ "\$BOOT_MODE" == "UEFI" ]]; then
+    # Detect ESP mount point dynamically
+    ESP_MOUNT=$(findmnt -n -o TARGET /dev/disk/by-partlabel/EFI\ System\ Partition 2>/dev/null || findmnt -n -o TARGET -t vfat 2>/dev/null | grep -i 'efi' | head -n1)
+    
+    if [[ -z "\$ESP_MOUNT" ]]; then
+        error "Could not detect ESP mount point"
+    fi
+    
+    # Construct GRUB config path
+    ESP_PATH="\${ESP_MOUNT}/EFI/GRUB/grub.cfg"
+    
+    # Ensure directory exists
+    mkdir -p "$(dirname "\$ESP_PATH")" || error "Failed to create GRUB directory"
+    
+    info "Detected ESP at: \$ESP_MOUNT"
+    info "Using GRUB config path: \$ESP_PATH"
+    
+    # Generate config
+    grub-mkconfig -o "\$ESP_PATH" || error "Failed to generate GRUB configuration for UEFI"
+else
+    # For BIOS, standard path
+    grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration for BIOS"
+fi
 sleep 2
 
 # (hypernate on lid close)
@@ -530,6 +575,8 @@ HIBERNATEEOF
 else
     warn "Skipping hibernation configuration due to swapfile offset issues"
 fi
+
+info "GRUB installation and configuration completed for \$BOOT_MODE mode"
 
 # Enable services
 echo "Enabling openssh service"
