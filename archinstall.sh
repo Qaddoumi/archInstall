@@ -74,37 +74,6 @@ case $REGION_CHOICE in
     *) error "Invalid region selection" ;;
 esac
 
-
-info "Setting mirrors for $REGION"
-# Backup existing mirrorlist
-cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup || warn "Failed to backup mirrorlist"
-
-# Update mirrorlist with selected region
-curl -s "https://archlinux.org/mirrorlist/?country=${REGION// /%20}&protocol=https&use_mirror_status=on" | \
-    sed -e 's/^#Server/Server/' -e '/^#/d' > /etc/pacman.d/mirrorlist || \
-    warn "Failed to update mirrorlist"
-
-# Verify mirrorlist is not empty
-if [[ ! -s /etc/pacman.d/mirrorlist ]]; then
-    warn "Generated mirrorlist is empty, restoring backup"
-    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
-    warn "Mirror configuration failed"
-fi
-
-info "Testing mirror connectivity..."
-if ! pacman -Sy --noconfirm &>/dev/null; then
-    warn "Mirror test failed, restoring backup"
-    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
-    warn "Unable to connect to configured mirrors"
-fi
-
-info "Mirror configuration completed successfully"
-
-newTask "==================================================\n=================================================="
-
-info "Updating package databases..."
-pacman -Sy || warn "Failed to update package databases"
-
 newTask "==================================================\n=================================================="
 
 while true; do
@@ -343,6 +312,42 @@ else
     info "Boot Partition: $BOOT_PART (mounted at /mnt/boot)"
     info "Root Partition: $ROOT_PART (mounted at /mnt)"
 fi
+
+newTask "==================================================\n=================================================="
+
+info "Setting mirrors for $REGION"
+# Backup existing mirrorlist
+mkdir -p /etc/pacman.d
+if [[ ! -f /etc/pacman.d/mirrorlist ]]; then
+    touch /etc/pacman.d/mirrorlist
+fi
+cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup || warn "Failed to backup mirrorlist"
+
+# Update mirrorlist with selected region
+curl -s "https://archlinux.org/mirrorlist/?country=${REGION// /%20}&protocol=https&use_mirror_status=on" | \
+    sed -e 's/^#Server/Server/' -e '/^#/d' > /etc/pacman.d/mirrorlist || \
+    warn "Failed to update mirrorlist"
+
+# Verify mirrorlist is not empty
+if [[ ! -s /etc/pacman.d/mirrorlist ]]; then
+    warn "Generated mirrorlist is empty, restoring backup"
+    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
+    warn "Mirror configuration failed"
+fi
+
+info "Testing mirror connectivity..."
+if ! pacman -Sy --noconfirm &>/dev/null; then
+    warn "Mirror test failed, restoring backup"
+    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
+    warn "Unable to connect to configured mirrors"
+fi
+
+info "Mirror configuration completed successfully"
+
+newTask "==================================================\n=================================================="
+
+info "Updating package databases..."
+pacman -Sy || warn "Failed to update package databases"
 
 newTask "==================================================\n=================================================="
 
