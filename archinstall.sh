@@ -48,7 +48,6 @@ if ! ping -c 1 archlinux.org &>/dev/null; then
     [[ "$NO_NET" == "y" ]] || error "Aborted"
 fi
 
-# Root password
 while true; do
     read -rsp "Enter root password: " ROOT_PASSWORD
     echo
@@ -60,7 +59,6 @@ while true; do
     warn "Passwords don't match!"
 done
 
-# User account
 read -rp "Enter username: " USERNAME
 [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] || error "Invalid username"
 
@@ -79,17 +77,14 @@ export ROOT_PASSWORD
 export USERNAME
 export USER_PASSWORD
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
-# List disks
 info "Available disks:"
 lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
 
-# Get disk
 read -rp "Enter disk to wipe (e.g., vda, sda, nvme0n1): " DISK
 [[ -e "/dev/$DISK" ]] || error "Disk /dev/$DISK not found"
 
-# Show disk info
 info "\nSelected disk layout:"
 lsblk "/dev/$DISK"
 
@@ -97,34 +92,30 @@ lsblk "/dev/$DISK"
 read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'): " CONFIRM
 [[ "$CONFIRM" == "y" ]] || error "Operation cancelled"
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
  
-# Enhanced cleanup function
 cleanup_disks() {
     local attempts=3
-    info "Starting cleanup process (3 attempts)...\n"
+    info "Starting cleanup process (3 attempts)..."
     
     while (( attempts-- > 0 )); do
-        # 1. Kill processes using the disk
-        echo
+        # Kill processes using the disk
         info "Attempt $((3-attempts)): Killing processes..."
         pids=$(lsof +f -- "/dev/$DISK"* 2>/dev/null | awk '{print $2}' | uniq)
         sleep 2
         [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
         sleep 2
         for process in $(lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq); do kill -9 "$process"; done
-        sleep 2  # Allow time for processes to settle
+        sleep 2
         # try again to kill any processes using the disk
         lsof +f -- /dev/${DISK}* 2>/dev/null | awk '{print $2}' | uniq | xargs -r kill -9
         sleep 2
         
-        # 2. Unmount filesystems (including nested mounts)
-        echo
         info "Unmounting partitions..."
         umount -R "/dev/$DISK"* 2>/dev/null
         sleep 2
         
-        # 3. Deactivate LVM
+        # Deactivate LVM
         if command -v vgchange &>/dev/null; then
             info "Deactivating LVM..."
             vgchange -an 2>/dev/null
@@ -132,8 +123,6 @@ cleanup_disks() {
         fi
         sleep 2
         
-        # 4. Disable swap
-        echo
         info "Disabling swap..."
         swapoff -a 2>/dev/null
         for swap in $(blkid -t TYPE=swap -o device | grep "/dev/$DISK"); do
@@ -141,8 +130,6 @@ cleanup_disks() {
         done
         sleep 2
 
-        # Check and unmount any partitions from the disk before wiping
-        echo
         info "Checking for mounted partitions on /dev/$DISK..."
         for part in $(lsblk -lnp -o NAME | grep "^/dev/$DISK" | tail -n +2); do
             info "Attempting to unmount $part..."
@@ -154,7 +141,7 @@ cleanup_disks() {
         done
         sleep 2
         
-        # 5. Check if cleanup was successful
+        # Check if cleanup was successful
         if ! (mount | grep -q "/dev/$DISK") && \
            ! (lsof +f -- "/dev/$DISK"* 2>/dev/null | grep -q .); then
             echo
@@ -169,14 +156,12 @@ cleanup_disks() {
     return 1
 }
 
-# Run cleanup to clean the disk
 if ! cleanup_disks; then
     warn "Proceeding with disk operations despite cleanup warnings"
 fi
 
 newTask "==================================================\n=================================================="
 
-# Wipe disk
 info "Wiping disk signatures..."
 wipefs -a "/dev/$DISK" || error "Failed to wipe disk"
 sleep 2
@@ -205,7 +190,6 @@ else
     PART3="/dev/${DISK}3"
 fi
 
-# Partitioning
 info "Creating new GPT partition table..."
 parted -s "/dev/$DISK" mklabel gpt || error "Partitioning failed"
 sleep 2
@@ -277,7 +261,7 @@ else
     mount "$BOOT_PART" /mnt/boot || error "Failed to mount boot partition"
 fi
 
-newTask "==================================================\n==================================================\n"
+newTask "==================================================\n=================================================="
 
 info "Verifying new layout:"
 fdisk -l "/dev/$DISK" || error "Verification failed"
@@ -290,8 +274,7 @@ mount | grep "/dev/$DISK"
 
 newTask "==================================================\n=================================================="
 
-# Display summary
-info "Partitioning Summary:"
+info "\n${GREEN}[✓] Partitioning Summary:${NC}"
 info "Boot Mode: $BOOT_MODE"
 if [[ "$BOOT_MODE" == "UEFI" ]]; then
     info "EFI System Partition: $EFI_PART (mounted at /mnt/boot/efi)"
@@ -304,7 +287,6 @@ fi
 
 newTask "==================================================\n=================================================="
 
-# Create swap file with hibernation support
 info "Creating swap file with hibernation support..."
 create_swap() {
     # Get precise RAM size in bytes (not rounded to GB)
@@ -367,14 +349,12 @@ sleep 2
 # Ensure /mnt/etc exists before generating fstab
 mkdir -p /mnt/etc
 
-# Generate fstab
 info "Generating fstab"
 genfstab -U /mnt >> /mnt/etc/fstab || error "Failed to generate fstab"
 sleep 2
 newTask "==================================================\n=================================================="
 info "==== CHROOT SETUP ===="
 
-# Chroot setup
 info "Configuring GRUB and hibernation in chroot..."
 arch-chroot /mnt /bin/bash <<EOF || error "Chroot commands failed"
 
@@ -431,6 +411,8 @@ cat <<HOSTSEOF > /etc/hosts
 127.0.1.1   \${HOSTNAME}.localdomain \${HOSTNAME}
 HOSTSEOF
 
+newTask "==================================================\n=================================================="
+
 # Set root password
 info "Setting root password"
 echo "root:\${ROOT_PASSWORD}" | chpasswd
@@ -439,6 +421,8 @@ echo "root:\${ROOT_PASSWORD}" | chpasswd
 info "Creating user \${USERNAME} account"
 useradd -m -G wheel -s /bin/bash "\${USERNAME}"
 echo "\${USERNAME}:\${USER_PASSWORD}" | chpasswd
+
+newTask "==================================================\n=================================================="
 
 # Configure mkinitcpio for hibernation
 info "Configuring mkinitcpio for hibernation"
@@ -559,8 +543,10 @@ fi
 
 info "GRUB installation and configuration completed for \$BOOT_MODE mode"
 
+newTask "==================================================\n=================================================="
+
 # Enable services
-echo "Enabling openssh service"
+info "Enabling openssh service"
 systemctl enable sshd || warn "Failed to enable sshd"
 
 # Clear sensitive variables in chroot
@@ -568,21 +554,20 @@ unset ROOT_PASSWORD USER_PASSWORD
 
 EOF
 
+newTask "==================================================\n=================================================="
+info "==== POST-CHROOT CONFIGURATION ===="
 # Add swapfile entry to fstab for hibernation
-echo "Configuring fstab for hibernation support" 
+info "Configuring fstab for hibernation support" 
 echo "# Swap file for hibernation" >> /mnt/etc/fstab
 echo "/swapfile none swap defaults 0 0" >> /mnt/etc/fstab
 echo "resume=UUID=$(blkid -s UUID -o value ${ROOT_PART})" >> /mnt/etc/default/grub
 info "Hibernation support configured in fstab and GRUB"
 
 newTask "==================================================\n=================================================="
-info "==== FINALIZING INSTALLATION ===="
 
-# Enable network manager 
 info "Enabling NetworkManager service"
 arch-chroot /mnt systemctl enable NetworkManager || warn "NetworkManager not installed"
 
-# Configure sudo 
 info "Configuring sudo for user $USERNAME"
 echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sudo"
 
