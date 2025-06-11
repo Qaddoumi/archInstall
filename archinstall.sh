@@ -605,4 +605,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.4 
+### version 0.4 ###
