@@ -314,60 +314,67 @@ info "==== CHROOT SETUP ===="
 info "Configuring GRUB and hibernation in chroot..."
 arch-chroot /mnt /bin/bash <<EOF || error "Chroot commands failed"
 
+set +u
+
+# Pass variables from parent environment
+ROOT_PASSWORD="${ROOT_PASSWORD}"
+USERNAME="${USERNAME}"
+USER_PASSWORD="${USER_PASSWORD}"
+DISK="${DISK}"
+ROOT_PART="${ROOT_PART}"
+
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # rest the color to default
+NC='\033[0m'
 
 error() {
-    echo -e "${RED}[ERROR] $*${NC}" >&2
+    echo -e "\${RED}[ERROR] \$*\${NC}" >&2
     exit 1
 }
 info() {
-    echo -e "${GREEN}[*] $*${NC}"
+    echo -e "\${GREEN}[*] \$*\${NC}"
 }
 newTask() {
-    echo -e "${GREEN}$*${NC}"
+    echo -e "\${GREEN}\$*\${NC}"
 }
 warn() {
-    echo -e "${YELLOW}[WARN] $*${NC}"
+    echo -e "\${YELLOW}[WARN] \$*\${NC}"
 }
 
 TIMEZONE="Asia/Amman"
 LOCALE="en_US.UTF-8"
-HOSTNAME="${USERNAME}Arch"
+HOSTNAME="\${USERNAME}Arch"
 
 # Set timezone
-info "Setting timezone to ${TIMEZONE}..."
-ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
+info "Setting timezone to \${TIMEZONE}"
+ln -sf /usr/share/zoneinfo/\${TIMEZONE} /etc/localtime
 hwclock --systohc
 
 # Set locale
-info "Setting locale to ${LOCALE}..."
-sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen
+info "Setting locale to \${LOCALE}"
+sed -i "s/^#\${LOCALE}/\${LOCALE}/" /etc/locale.gen
 locale-gen
-echo "LANG=${LOCALE}" > /etc/locale.conf
+echo "LANG=\${LOCALE}" > /etc/locale.conf
 
 # Set hostname and hosts
-echo "Setting hostname to ${USERNAME}Arch"
-
-echo "setting hosts file"
-echo "$HOSTNAME" > /etc/hostname
+info "Setting hostname to \${HOSTNAME}"
+echo "\$HOSTNAME" > /etc/hostname
 cat <<HOSTSEOF > /etc/hosts
 127.0.0.1   localhost
 ::1         localhost
-127.0.1.1   ${HOSTNAME}.localdomain ${HOSTNAME}
+127.0.1.1   \${HOSTNAME}.localdomain \${HOSTNAME}
 HOSTSEOF
 
 # Set root password
-info "Setting root password..."
-echo "root:${ROOT_PASSWORD}" | chpasswd
+info "Setting root password"
+echo "root:\${ROOT_PASSWORD}" | chpasswd
 
 # Create user 
-info "Creating user account..."
-useradd -m -G wheel -s /bin/bash "${USERNAME}"
-echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
+info "Creating user \${USERNAME} account"
+useradd -m -G wheel -s /bin/bash "\${USERNAME}"
+echo "\${USERNAME}:\${USER_PASSWORD}" | chpasswd
 
 # Configure mkinitcpio for hibernation
 info "Configuring mkinitcpio for hibernation"
@@ -376,8 +383,7 @@ mkinitcpio -P
 sleep 2
 
 # Install and configure GRUB
-# GRUB
-info "Installing GRUB bootloader..."
+info "Installing GRUB bootloader"
 if [[ -d /sys/firmware/efi ]]; then
     grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB || {
         error "GRUB installation failed"
@@ -394,24 +400,27 @@ info "Configuring GRUB for dual boot"
 echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
 
 # Now configure hibernation with proper error checking
-info "Configuring hibernation..."
+info "Configuring hibernation"
 # Get root partition UUID
-ROOT_UUID=\$(blkid -s UUID -o value "${ROOT_PART}")
+ROOT_UUID=\$(blkid -s UUID -o value "\${ROOT_PART}")
 if [[ -z "\$ROOT_UUID" ]]; then
-    error "Could not get root partition UUID"
+    warn "Could not get root partition UUID, hibernation may not work properly"
+    ROOT_UUID=\$(blkid -s UUID -o value \$(findmnt -n -o SOURCE /))
 fi
 
 # Calculate swapfile offset (critical for hibernation)
 echo "Calculating swapfile offset for hibernation..."
 if [[ ! -f /swapfile ]]; then
-    error "Swapfile not found at /swapfile"
+    warn "Swapfile not found at /swapfile"
+    SWAPFILE_OFFSET=""
 fi
 
 # Check if filefrag is available
 if ! command -v filefrag >/dev/null 2>&1; then
-    error "filefrag command not found. Installing e2fsprogs..."
+    warn "filefrag command not found, hibernation may not work"
+    SWAPFILE_OFFSET=""
     pacman -S --noconfirm e2fsprogs || {
-        error "Failed to install e2fsprogs"
+        warn "Failed to install e2fsprogs which provides filefrag"
     }
 fi
 
@@ -422,6 +431,8 @@ if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
     warn "First method failed, trying alternative..."
     SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk '/^ *0:/ {print \$4}' | sed 's/\\.\\.//')
 fi
+
+# If still not found, warn and set default
 # Final validation
 if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
     warn " Could not determine swapfile offset. Hibernation may not work."
@@ -459,6 +470,9 @@ fi
 # Enable services
 echo "Enabling openssh service"
 systemctl enable sshd || warn "Failed to enable sshd"
+
+# Clear sensitive variables in chroot
+unset ROOT_PASSWORD USER_PASSWORD
 
 EOF
 
