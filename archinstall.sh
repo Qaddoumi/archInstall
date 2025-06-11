@@ -52,6 +52,53 @@ fi
 
 newTask "==================================================\n=================================================="
 
+info "Detecting GPU devices..."
+# Get all GPU devices into an array
+mapfile -t GPU_DEVICES < <(lspci | grep -E "VGA|3D" | awk -F': ' '{print $2}')
+
+if [[ ${#GPU_DEVICES[@]} -eq 0 ]]; then
+    warn "No GPU devices detected!"
+    GPU_PKGS="xf86-video-vesa"  # Fallback to basic driver
+else
+    # Initialize empty GPU packages array
+    declare -a SELECTED_GPU_PKGS
+
+    info "Found ${#GPU_DEVICES[@]} GPU device(s):"
+    for ((i=0; i<${#GPU_DEVICES[@]}; i++)); do
+        echo "GPU $((i+1)): ${GPU_DEVICES[$i]}"
+    done
+
+    # Process each GPU
+    for ((i=0; i<${#GPU_DEVICES[@]}; i++)); do
+        info "\nSelect driver for GPU $((i+1)): ${GPU_DEVICES[$i]}"
+        echo "1) All open-source (default)"
+        echo "2) AMD / ATI (open-source)"
+        echo "3) Intel (open-source)"
+        echo "4) Nvidia (open kernel module for newer GPUs, Turing+)"
+        echo "5) Nvidia (open-source nouveau driver)"
+        echo "6) Nvidia (proprietary)"
+
+        read -rp "Select GPU driver [1-6] (press Enter for default): " GPU_CHOICE
+        GPU_CHOICE=${GPU_CHOICE:-1}
+
+        case $GPU_CHOICE in
+            1) SELECTED_GPU_PKGS+=("xf86-video-vesa mesa") ;;
+            2) SELECTED_GPU_PKGS+=("xf86-video-amdgpu mesa vulkan-radeon") ;;
+            3) SELECTED_GPU_PKGS+=("xf86-video-intel mesa vulkan-intel") ;;
+            4) SELECTED_GPU_PKGS+=("nvidia-open nvidia-utils nvidia-settings") ;;
+            5) SELECTED_GPU_PKGS+=("xf86-video-nouveau mesa") ;;
+            6) SELECTED_GPU_PKGS+=("nvidia nvidia-utils nvidia-settings") ;;
+            *) warn "Invalid selection, using default"; SELECTED_GPU_PKGS+=("xf86-video-vesa mesa") ;;
+        esac
+    done
+
+    # Combine all selected GPU packages
+    GPU_PKGS=$(echo "${SELECTED_GPU_PKGS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+    info "Selected GPU driver packages: $GPU_PKGS"
+fi
+
+newTask "==================================================\n=================================================="
+
 info "Configuring mirrors..."
 info "Available regions:"
 echo "1) United States"
@@ -422,14 +469,7 @@ case "$CPU_VENDOR" in
     *) UCODE_PKG=""; warn "Unknown CPU vendor: $CPU_VENDOR" ;;
 esac
 
-GPU_TYPE=$(lspci | grep -E "VGA|3D" | awk -F': ' '{print $2}')
-case "$GPU_TYPE" in
-    *NVIDIA*) GPU_PKGS="nvidia nvidia-utils" ;;
-    *AMD*)    GPU_PKGS="xf86-video-amdgpu" ;;
-    *Intel*)  GPU_PKGS="xf86-video-intel" ;;
-    *)        GPU_PKGS=""; warn "Unknown GPU: $GPU_TYPE" ;;
-esac
-info "Detected ${GPU_PKGS}, Install the proper video drivers"
+info "Detected GPU packages earlier\n ${GPU_PKGS}"
 
 info "Installing pipwire for audio management"
 PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
@@ -701,4 +741,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.4 ###
+### version 0.5 ###
