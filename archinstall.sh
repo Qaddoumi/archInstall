@@ -65,7 +65,7 @@ if systemd-detect-virt --vm &>/dev/null; then
     case "$VIRT_TYPE" in
         "kvm"|"qemu")
             VIRT_PKGS="qemu-guest-agent"
-            # Check if SPICE is available
+            info "Checking if SPICE/QXL availables"
             if [[ -e "/dev/virtio-ports/org.spice-space.webdav.0" ]] || lspci | grep -qi "qxl"; then
                 VIRT_PKGS="$VIRT_PKGS spice-vdagent"
             fi
