@@ -561,11 +561,25 @@ XDGP_PORTAL_PKGS="xdg-desktop-portal xdg-desktop-portal-gtk"
 BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring"
 OPTIONAL_PKGS="htop networkmanager sudo nano git openssh vim wget"
 
-# Combine packages, filtering out empty ones
-INSTALL_PKGS="$BASE_PKGS $OPTIONAL_PKGS $PIPWIRE_PKGS $XDGP_PORTAL_PKGS"
-[[ -n "$UCODE_PKG" ]] && INSTALL_PKGS="$INSTALL_PKGS $UCODE_PKG"
-[[ -n "$GPU_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $GPU_PKGS"
-[[ -n "$VIRT_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $VIRT_PKGS"
+# Convert all package groups to arrays
+declare -a BASE_PKGS_ARR=($BASE_PKGS)
+declare -a OPTIONAL_PKGS_ARR=($OPTIONAL_PKGS)
+declare -a PIPWIRE_PKGS_ARR=($PIPWIRE_PKGS)
+declare -a XDGP_PORTAL_PKGS_ARR=($XDGP_PORTAL_PKGS)
+
+# Combine arrays
+INSTALL_PKGS_ARR=(
+    "${BASE_PKGS_ARR[@]}"
+    "${OPTIONAL_PKGS_ARR[@]}"
+    "${PIPWIRE_PKGS_ARR[@]}"
+    "${XDGP_PORTAL_PKGS_ARR[@]}"
+)
+
+# Add conditional packages
+[[ -n "$UCODE_PKG" ]] && INSTALL_PKGS_ARR+=($UCODE_PKG)
+[[ -n "$GPU_PKGS" ]] && INSTALL_PKGS_ARR+=($GPU_PKGS)
+[[ -n "$VIRT_PKGS" ]] && INSTALL_PKGS_ARR+=($VIRT_PKGS)
+
 
 ## Check if package exists in repositories
 check_package() {
@@ -578,9 +592,6 @@ check_package() {
 }
 
 info "Checking package availability"
-# Convert string to array if INSTALL_PKGS is a string
-INSTALL_PKGS_ARR=($INSTALL_PKGS)
-# Process packages
 for pkg in "${INSTALL_PKGS_ARR[@]}"; do
     [ -z "$pkg" ] && continue  # Skip empty elements
     if ! check_package "$pkg"; then
@@ -589,7 +600,8 @@ for pkg in "${INSTALL_PKGS_ARR[@]}"; do
         INSTALL_PKGS_ARR=("${INSTALL_PKGS_ARR[@]/$pkg}")
     fi
 done
-INSTALL_PKGS="${INSTALL_PKGS_ARR[*]}"
+# Convert back to space-separated string and remove extra spaces
+INSTALL_PKGS=$(echo "${INSTALL_PKGS_ARR[@]}" | tr -s ' ')
 
 info "Installing: "
 echo "$INSTALL_PKGS"
