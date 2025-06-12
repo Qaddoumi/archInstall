@@ -52,26 +52,15 @@ fi
 
 newTask "==================================================\n=================================================="
 
-# Detect virtualization first
-info "Detecting system environment..."
 IS_VM=false
 VIRT_PKGS=""
 GPU_PKGS=""
 
-# Detect environment and hardware
 info "Detecting system environment..."
-
-# Check for virtual environment
 if systemd-detect-virt --vm &>/dev/null; then
     VIRT_TYPE=$(systemd-detect-virt)
     IS_VM=true
     info "Virtual machine detected: $VIRT_TYPE"
-
-    # Check for GPU passthrough
-    if lspci | grep -E "VGA|3D|Display" | grep -vE "qxl|virtio|vmware|cirrus" | grep -qE "nvidia|amd|ati|radeon|intel.*graphics"; then
-        warn "Physical GPU detected in VM - GPU passthrough likely active"
-        info "GPU passthrough mode enabled - will install physical GPU drivers"
-    fi
 
     case "$VIRT_TYPE" in
         "kvm"|"qemu")
@@ -108,7 +97,7 @@ OLD_IFS="$IFS"
 IFS=$'\n'
 GPU_DEVICES=($(lspci | grep -E "VGA|3D|Display" | awk -F': ' '{print $2}'))
 IFS="$OLD_IFS"
-echo -e "Detected GPU devices: ${#GPU_DEVICES[@]}\n"
+echo -e "Detected GPU devices: ${#GPU_DEVICES[@]}"
 for gpu in "${GPU_DEVICES[@]}"; do
     echo " - $gpu"
 done
