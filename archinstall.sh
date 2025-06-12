@@ -111,8 +111,12 @@ if [[ ${#GPU_DEVICES[@]} -eq 0 ]]; then
     fi
 else
     # Initialize arrays for different GPU types
-    declare -a AMD_GPUS INTEL_GPUS NVIDIA_GPUS VM_GPUS OTHER_GPUS
-    declare -a FINAL_GPU_PKGS
+    declare -a AMD_GPUS=()
+    declare -a INTEL_GPUS=()
+    declare -a NVIDIA_GPUS=()
+    declare -a VM_GPUS=()
+    declare -a OTHER_GPUS=()
+    declare -a FINAL_GPU_PKGS=()
     
     info "Found ${#GPU_DEVICES[@]} GPU device(s):"
     for ((i=0; i<${#GPU_DEVICES[@]}; i++)); do
@@ -158,7 +162,7 @@ else
     fi
 
     # Physical hardware OR GPU passthrough - handle multiple GPU types
-    info "Configuring physical GPU drivers..."
+    info "Configuring physical GPU drivers if exists..."
     
     # Handle AMD GPUs
     if [[ ${#AMD_GPUS[@]} -gt 0 ]]; then
@@ -819,4 +823,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5.3 ###
+### version 0.5.4 ###
