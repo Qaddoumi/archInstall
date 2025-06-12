@@ -566,6 +566,32 @@ INSTALL_PKGS="$BASE_PKGS $OPTIONAL_PKGS $PIPWIRE_PKGS $XDGP_PORTAL_PKGS"
 [[ -n "$UCODE_PKG" ]] && INSTALL_PKGS="$INSTALL_PKGS $UCODE_PKG"
 [[ -n "$GPU_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $GPU_PKGS"
 [[ -n "$VIRT_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $VIRT_PKGS"
+
+## Check if package exists in repositories
+check_package() {
+    local pkg="$1"
+    if pacman -Sp "$pkg" &>/dev/null; then
+        return 0  # Package exists
+    else
+        warn "Package $pkg not found in repositories"
+        return 1  # Package not found
+    fi
+}
+
+info "Checking package availability"
+# Convert string to array if INSTALL_PKGS is a string
+INSTALL_PKGS_ARR=($INSTALL_PKGS)
+# Process packages
+for pkg in "${INSTALL_PKGS_ARR[@]}"; do
+    [ -z "$pkg" ] && continue  # Skip empty elements
+    if ! check_package "$pkg"; then
+        warn "Skipping package $pkg as it is not available in repositories"
+        # Remove from array instead of string manipulation
+        INSTALL_PKGS_ARR=("${INSTALL_PKGS_ARR[@]/$pkg}")
+    fi
+done
+INSTALL_PKGS="${INSTALL_PKGS_ARR[*]}"
+
 info "Installing: "
 echo "$INSTALL_PKGS"
 pacstrap /mnt $INSTALL_PKGS || error "Package installation failed"
