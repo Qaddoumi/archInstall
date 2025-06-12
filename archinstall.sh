@@ -567,7 +567,7 @@ INSTALL_PKGS="$BASE_PKGS $OPTIONAL_PKGS $PIPWIRE_PKGS $XDGP_PORTAL_PKGS"
 [[ -n "$GPU_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $GPU_PKGS"
 [[ -n "$VIRT_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $VIRT_PKGS"
 info "Installing: "
-echo "$INSTALL_PKGS" | tr ' ' '\n' | sort | pr -3 -t
+echo "$INSTALL_PKGS"
 pacstrap /mnt $INSTALL_PKGS || error "Package installation failed"
 sleep 2
 
