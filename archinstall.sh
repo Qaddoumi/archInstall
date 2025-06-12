@@ -52,49 +52,168 @@ fi
 
 newTask "==================================================\n=================================================="
 
+# Detect virtualization first
+info "Detecting system environment..."
+IS_VM=false
+VIRT_PKGS=""
+GPU_PKGS=""
+
+# Detect environment and hardware
+info "Detecting system environment..."
+
+# Check for virtual environment
+if systemd-detect-virt --vm &>/dev/null; then
+    VIRT_TYPE=$(systemd-detect-virt)
+    IS_VM=true
+    info "Virtual machine detected: $VIRT_TYPE"
+
+    # Check for GPU passthrough
+    if lspci | grep -E "VGA|3D|Display" | grep -vE "qxl|virtio|vmware|cirrus" | grep -qE "nvidia|amd|ati|radeon|intel.*graphics"; then
+        warn "Physical GPU detected in VM - GPU passthrough likely active"
+        info "GPU passthrough mode enabled - will install physical GPU drivers"
+    fi
+
+    case "$VIRT_TYPE" in
+        "kvm"|"qemu")
+            VIRT_PKGS="qemu-guest-agent"
+            # Check if SPICE is available
+            if [[ -e "/dev/virtio-ports/org.spice-space.webdav.0" ]] || lspci | grep -qi "qxl"; then
+                VIRT_PKGS="$VIRT_PKGS spice-vdagent"
+            fi
+            ;;
+        "virtualbox")
+            VIRT_PKGS="virtualbox-guest-utils-nox"
+            ;;
+        "vmware")
+            VIRT_PKGS="open-vm-tools"
+            ;;
+        *)
+            VIRT_PKGS=""
+            warn "Unknown virtualization platform: $VIRT_TYPE"
+            ;;
+    esac
+else
+    info "Running on physical hardware"
+fi
+
+if [ -z "$VIRT_PKGS" ]; then
+    info "No virtualization packages will be installed."
+else
+    info "Virtualization packages: $VIRT_PKGS"
+fi
+
 info "Detecting GPU devices..."
-# Get all GPU devices into an array
-mapfile -t GPU_DEVICES < <(lspci | grep -E "VGA|3D" | awk -F': ' '{print $2}')
+# Use IFS to prevent word splitting
+OLD_IFS="$IFS"
+IFS=$'\n'
+GPU_DEVICES=($(lspci | grep -E "VGA|3D|Display" | awk -F': ' '{print $2}'))
+IFS="$OLD_IFS"
+echo -e "Detected GPU devices: ${#GPU_DEVICES[@]}\n"
+for gpu in "${GPU_DEVICES[@]}"; do
+    echo " - $gpu"
+done
 
 if [[ ${#GPU_DEVICES[@]} -eq 0 ]]; then
     warn "No GPU devices detected!"
-    GPU_PKGS="xf86-video-vesa"  # Fallback to basic driver
+    if [[ "$IS_VM" == true ]]; then
+        GPU_PKGS="mesa"  # Mesa only for VMs without detected GPU
+    else
+        GPU_PKGS="mesa xf86-video-vesa"  # Fallback for bare metal
+    fi
 else
-    # Initialize empty GPU packages array
-    declare -a SELECTED_GPU_PKGS
-
+    # Initialize arrays for different GPU types
+    declare -a AMD_GPUS INTEL_GPUS NVIDIA_GPUS VM_GPUS OTHER_GPUS
+    declare -a FINAL_GPU_PKGS
+    
     info "Found ${#GPU_DEVICES[@]} GPU device(s):"
     for ((i=0; i<${#GPU_DEVICES[@]}; i++)); do
-        echo "GPU $((i+1)): ${GPU_DEVICES[$i]}"
+        echo "Categorize GPU $((i+1)): ${GPU_DEVICES[$i]}"
+        
+        gpu_lower=$(echo "${GPU_DEVICES[$i]}" | tr '[:upper:]' '[:lower:]')
+        if echo "$gpu_lower" | grep -q "qxl"; then
+            VM_GPUS+=("qxl")
+        elif echo "$gpu_lower" | grep -q "virtio"; then
+            VM_GPUS+=("virtio")
+        elif echo "$gpu_lower" | grep -q "vmware\|svga"; then
+            VM_GPUS+=("vmware")
+        elif echo "$gpu_lower" | grep -q "amd\|ati\|radeon"; then
+            AMD_GPUS+=("${GPU_DEVICES[$i]}")
+        elif echo "$gpu_lower" | grep -q "intel"; then
+            INTEL_GPUS+=("${GPU_DEVICES[$i]}")
+        elif echo "$gpu_lower" | grep -q "nvidia\|geforce\|quadro\|tesla"; then
+            NVIDIA_GPUS+=("${GPU_DEVICES[$i]}")
+        elif [[ "$IS_VM" == true ]]; then
+            VM_GPUS+=("generic")
+        else
+            OTHER_GPUS+=("${GPU_DEVICES[$i]}")
+        fi
     done
+    
+    # Always include mesa as base
+    FINAL_GPU_PKGS+=("mesa")
+    
+    # VM-specific drivers 
+    info "Configuring VM graphics drivers..."
+    if printf '%s\n' "${VM_GPUS[@]}" | grep -q "qxl"; then
+        FINAL_GPU_PKGS+=("xf86-video-qxl")
+        info "Added QXL driver for SPICE graphics"
+    elif printf '%s\n' "${VM_GPUS[@]}" | grep -q "virtio"; then
+        FINAL_GPU_PKGS+=("xf86-video-virtio")
+        info "Added virtio GPU driver"
+    elif printf '%s\n' "${VM_GPUS[@]}" | grep -q "vmware"; then
+        FINAL_GPU_PKGS+=("xf86-video-vmware")
+        info "Added VMware SVGA driver"
+    else
+        # Generic VM fallback - mesa should handle it
+        info "Using generic mesa drivers for VM"
+    fi
 
-    # Process each GPU
-    for ((i=0; i<${#GPU_DEVICES[@]}; i++)); do
-        info "\nSelect driver for GPU $((i+1)): ${GPU_DEVICES[$i]}"
-        echo "1) All open-source (default)"
-        echo "2) AMD / ATI (open-source)"
-        echo "3) Intel (open-source)"
-        echo "4) Nvidia (open kernel module for newer GPUs, Turing+)"
-        echo "5) Nvidia (open-source nouveau driver)"
-        echo "6) Nvidia (proprietary)"
-
-        read -rp "Select GPU driver [1-6] (press Enter for default): " GPU_CHOICE
-        GPU_CHOICE=${GPU_CHOICE:-1}
-
-        case $GPU_CHOICE in
-            1) SELECTED_GPU_PKGS+=("xf86-video-vesa mesa") ;;
-            2) SELECTED_GPU_PKGS+=("xf86-video-amdgpu mesa vulkan-radeon") ;;
-            3) SELECTED_GPU_PKGS+=("xf86-video-intel mesa vulkan-intel") ;;
-            4) SELECTED_GPU_PKGS+=("nvidia-open nvidia-utils nvidia-settings") ;;
-            5) SELECTED_GPU_PKGS+=("xf86-video-nouveau mesa") ;;
-            6) SELECTED_GPU_PKGS+=("nvidia nvidia-utils nvidia-settings") ;;
-            *) warn "Invalid selection, using default"; SELECTED_GPU_PKGS+=("xf86-video-vesa mesa") ;;
+    # Physical hardware OR GPU passthrough - handle multiple GPU types
+    info "Configuring physical GPU drivers..."
+    
+    # Handle AMD GPUs
+    if [[ ${#AMD_GPUS[@]} -gt 0 ]]; then
+        info "Detected ${#AMD_GPUS[@]} AMD GPU(s)"
+        echo "Select AMD driver:"
+        echo "1) AMDGPU (recommended for GCN 1.2+ and newer)"
+        echo "2) Radeon (legacy, for older GPUs)"
+        read -rp "Select AMD driver [1-2]: " AMD_CHOICE
+        case ${AMD_CHOICE:-1} in
+            1) FINAL_GPU_PKGS+=("xf86-video-amdgpu" "vulkan-radeon" "lib32-vulkan-radeon") ;;
+            2) FINAL_GPU_PKGS+=("xf86-video-ati") ;;
         esac
-    done
-
-    # Combine all selected GPU packages
-    GPU_PKGS=$(echo "${SELECTED_GPU_PKGS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
-    info "Selected GPU driver packages: $GPU_PKGS"
+    fi
+    
+    # Handle Intel GPUs
+    if [[ ${#INTEL_GPUS[@]} -gt 0 ]]; then
+        info "Detected ${#INTEL_GPUS[@]} Intel GPU(s)"
+        FINAL_GPU_PKGS+=("xf86-video-intel" "vulkan-intel" "lib32-vulkan-intel")
+    fi
+    
+    # Handle NVIDIA GPUs
+    if [[ ${#NVIDIA_GPUS[@]} -gt 0 ]]; then
+        info "Detected ${#NVIDIA_GPUS[@]} NVIDIA GPU(s)"
+        echo "Select NVIDIA driver:"
+        echo "1) Nouveau (open-source, default)"
+        echo "2) Proprietary NVIDIA (better performance)"
+        echo "3) NVIDIA Open Kernel Module (Turing+ GPUs)"
+        read -rp "Select NVIDIA driver [1-3]: " NVIDIA_CHOICE
+        case ${NVIDIA_CHOICE:-1} in
+            1) FINAL_GPU_PKGS+=("xf86-video-nouveau") ;;
+            2) FINAL_GPU_PKGS+=("nvidia" "nvidia-utils" "nvidia-settings" "lib32-nvidia-utils") ;;
+            3) FINAL_GPU_PKGS+=("nvidia-open" "nvidia-utils" "nvidia-settings" "lib32-nvidia-utils") ;;
+        esac
+    fi
+    
+    # Handle other/unknown GPUs
+    if [[ ${#OTHER_GPUS[@]} -gt 0 ]]; then
+        warn "Detected ${#OTHER_GPUS[@]} unknown GPU(s), using VESA fallback"
+        FINAL_GPU_PKGS+=("xf86-video-vesa")
+    fi
+    
+    # Remove duplicates and create final package list
+    GPU_PKGS=$(printf '%s\n' "${FINAL_GPU_PKGS[@]}" | sort -u | tr '\n' ' ')
+    info "Selected GPU packages: $GPU_PKGS"
 fi
 
 newTask "==================================================\n=================================================="
@@ -427,38 +546,7 @@ sleep 2
 
 newTask "==================================================\n=================================================="
 
-# Detect environment and hardware
-info "Detecting system environment..."
-
-# Check for virtual environment
-if systemd-detect-virt --vm &>/dev/null; then
-    VIRT_TYPE=$(systemd-detect-virt)
-    info "Virtual machine detected: $VIRT_TYPE"
-    case "$VIRT_TYPE" in
-        "kvm"|"qemu")
-            VIRT_PKGS="qemu-guest-agent"
-            ;;
-        "virtualbox")
-            VIRT_PKGS="virtualbox-guest-utils-nox"
-            ;;
-        "vmware")
-            VIRT_PKGS="open-vm-tools"
-            ;;
-        *)
-            VIRT_PKGS=""
-            warn "Unknown virtualization platform: $VIRT_TYPE"
-            ;;
-    esac
-    
-    # Add SPICE agent if SPICE is detected
-    if [[ -e "/dev/virtio-ports/org.spice-space.webdav.0" ]]; then
-        VIRT_PKGS="$VIRT_PKGS spice-vdagent"
-    fi
-else
-    info "Running on physical hardware"
-    VIRT_PKGS=""
-fi
-
+info "Preparing to install essential packages..."
 # Install essential packages
 CPU_VENDOR=$(grep -m 1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
 info "Detected CPU vendor: $CPU_VENDOR"
@@ -471,9 +559,9 @@ esac
 
 info "Detected GPU packages earlier\n ${GPU_PKGS}"
 
-info "Installing pipwire for audio management"
+info "Adding pipwire packages for audio management"
 PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
-info "Installing xdg-desktop-portal for sandboxed applications"
+info "Adding xdg-desktop-portal for sandboxed applications"
 XDGP_PORTAL_PKGS="xdg-desktop-portal xdg-desktop-portal-gtk"
 
 # Base packages
@@ -485,7 +573,8 @@ INSTALL_PKGS="$BASE_PKGS $OPTIONAL_PKGS $PIPWIRE_PKGS $XDGP_PORTAL_PKGS"
 [[ -n "$UCODE_PKG" ]] && INSTALL_PKGS="$INSTALL_PKGS $UCODE_PKG"
 [[ -n "$GPU_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $GPU_PKGS"
 [[ -n "$VIRT_PKGS" ]] && INSTALL_PKGS="$INSTALL_PKGS $VIRT_PKGS"
-info "Installing: $INSTALL_PKGS"
+info "Installing: "
+echo "$INSTALL_PKGS" | tr ' ' '\n' | sort | pr -3 -t
 pacstrap /mnt $INSTALL_PKGS || error "Package installation failed"
 sleep 2
 
@@ -741,4 +830,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5.2 ###
+### version 0.5.3 ###
