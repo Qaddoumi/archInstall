@@ -262,7 +262,8 @@ lsblk -d -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT
 read -rp "Enter disk to wipe (e.g., vda, sda, nvme0n1): " DISK
 [[ -e "/dev/$DISK" ]] || error "Disk /dev/$DISK not found"
 
-info "\nSelected disk layout:"
+echo
+info "Selected disk layout:"
 lsblk "/dev/$DISK"
 
 # Final confirmation
