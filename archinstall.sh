@@ -164,6 +164,8 @@ else
     # Physical hardware OR GPU passthrough - handle multiple GPU types
     info "Configuring physical GPU drivers if exists..."
     
+    #TODO: (Learnaboutthem) Adding radeontop, intel-gpu-tools, and nvidia-prime for better GPU management 
+
     # Handle AMD GPUs
     if [[ ${#AMD_GPUS[@]} -gt 0 ]]; then
         info "Detected ${#AMD_GPUS[@]} AMD GPU(s)"
@@ -172,15 +174,15 @@ else
         echo "2) Radeon (legacy, for older GPUs)"
         read -rp "Select AMD driver [1-2]: " AMD_CHOICE
         case ${AMD_CHOICE:-1} in
-            1) FINAL_GPU_PKGS+=("xf86-video-amdgpu" "vulkan-radeon" "lib32-vulkan-radeon") ;;
-            2) FINAL_GPU_PKGS+=("xf86-video-ati") ;;
+            1) FINAL_GPU_PKGS+=("xf86-video-amdgpu" "vulkan-radeon" "lib32-vulkan-radeon radeontop") ;;
+            2) FINAL_GPU_PKGS+=("xf86-video-ati radeontop") ;;
         esac
     fi
     
     # Handle Intel GPUs
     if [[ ${#INTEL_GPUS[@]} -gt 0 ]]; then
         info "Detected ${#INTEL_GPUS[@]} Intel GPU(s)"
-        FINAL_GPU_PKGS+=("xf86-video-intel" "vulkan-intel" "lib32-vulkan-intel")
+        FINAL_GPU_PKGS+=("xf86-video-intel" "vulkan-intel" "lib32-vulkan-intel intel-gpu-tools")
     fi
     
     # Handle NVIDIA GPUs
@@ -192,9 +194,9 @@ else
         echo "3) NVIDIA Open Kernel Module (Turing+ GPUs)"
         read -rp "Select NVIDIA driver [1-3]: " NVIDIA_CHOICE
         case ${NVIDIA_CHOICE:-1} in
-            1) FINAL_GPU_PKGS+=("xf86-video-nouveau") ;;
-            2) FINAL_GPU_PKGS+=("nvidia" "nvidia-utils" "nvidia-settings" "lib32-nvidia-utils") ;;
-            3) FINAL_GPU_PKGS+=("nvidia-open" "nvidia-utils" "nvidia-settings" "lib32-nvidia-utils") ;;
+            1) FINAL_GPU_PKGS+=("xf86-video-nouveau nvidia-prime") ;;
+            2) FINAL_GPU_PKGS+=("nvidia" "nvidia-utils" "nvidia-settings" "lib32-nvidia-utils nvidia-prime") ;;
+            3) FINAL_GPU_PKGS+=("nvidia-open" "nvidia-utils" "nvidia-settings" "lib32-nvidia-utils nvidia-prime") ;;
         esac
     fi
     
@@ -220,18 +222,6 @@ echo "4) Jordan"
 echo "5) Netherlands"
 
 read -rp "Select mirror region [1-5] (press Enter for United States): " REGION_CHOICE
-
-# Default to United States (1) if empty
-REGION_CHOICE=${REGION_CHOICE:-1}
-
-case $REGION_CHOICE in
-    1) REGION="United States" ;;
-    2) REGION="Germany" ;;
-    3) REGION="United Kingdom" ;;
-    4) REGION="Jordan" ;;
-    5) REGION="Netherlands" ;;
-    *) error "Invalid region selection" ;;
-esac
 
 newTask "==================================================\n=================================================="
 
@@ -474,6 +464,19 @@ fi
 
 newTask "==================================================\n=================================================="
 
+# Default to United States (1) if empty
+REGION_CHOICE=${REGION_CHOICE:-1}
+
+# Map selection to country codes used by archlinux.org API
+case $REGION_CHOICE in
+    1) COUNTRY_CODE="US"; REGION="United States" ;;
+    2) COUNTRY_CODE="DE"; REGION="Germany" ;;
+    3) COUNTRY_CODE="GB"; REGION="United Kingdom" ;;
+    4) COUNTRY_CODE="JO"; REGION="Jordan" ;;
+    5) COUNTRY_CODE="NL"; REGION="Netherlands" ;;
+    *) error "Invalid region selection" ;;
+esac
+
 info "Setting mirrors for $REGION"
 # Create pacman.d directory if it doesn't exist
 mkdir -p /etc/pacman.d || warn "Failed to create /etc/pacman.d"
@@ -484,26 +487,57 @@ echo "Server = https://mirror.rackspace.com/archlinux/\$repo/os/\$arch" > /etc/p
 # Backup this working mirrorlist
 cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup || warn "Failed to backup mirrorlist"
 
-# Update mirrorlist with selected region
-curl -s "https://archlinux.org/mirrorlist/?country=${REGION// /%20}&protocol=https&use_mirror_status=on" | \
-    sed -e 's/^#Server/Server/' -e '/^#/d' > /etc/pacman.d/mirrorlist || \
-    warn "Failed to update mirrorlist"
-
-# Verify mirrorlist is not empty
-if [[ ! -s /etc/pacman.d/mirrorlist ]]; then
-    warn "Generated mirrorlist is empty, restoring backup"
-    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
-    warn "Mirror configuration failed"
+# Download and configure new mirrorlist using country codes
+info "Downloading mirrorlist for $REGION..."
+MIRRORLIST_URL="https://archlinux.org/mirrorlist/?country=${COUNTRY_CODE}&protocol=https&use_mirror_status=on"
+# Download mirrorlist with better error handling
+if curl -f -s "$MIRRORLIST_URL" -o /tmp/mirrorlist.new; then
+    # Uncomment all servers and remove comments
+    sed -e 's/^#Server/Server/' -e '/^#/d' /tmp/mirrorlist.new > /etc/pacman.d/mirrorlist
+    
+    # Verify mirrorlist is not empty and has valid entries
+    if [[ -s /etc/pacman.d/mirrorlist ]] && grep -q "^Server" /etc/pacman.d/mirrorlist; then
+        info "Successfully downloaded mirrorlist for $REGION"
+    else
+        warn "Downloaded mirrorlist is empty or invalid"
+        if [[ -f /etc/pacman.d/mirrorlist.backup ]]; then
+            cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
+            warn "Restored backup mirrorlist"
+        fi
+    fi
+else
+    warn "Failed to download mirrorlist from archlinux.org"
+    warn "Mirror configuration failed - check internet connection"
 fi
+# Clean up temporary file
+rm -f /tmp/mirrorlist.new
 
 info "Testing mirror connectivity..."
-if ! pacman -Sy --noconfirm &>/dev/null; then
-    warn "Mirror test failed, restoring backup"
-    cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
-    warn "Unable to connect to configured mirrors"
+info "This may take a moment..."
+
+# Test mirrors with timeout
+if timeout 30 pacman -Sy --noconfirm &>/dev/null; then
+    info "Mirror configuration completed successfully"
+    info "$(grep -c "^Server" /etc/pacman.d/mirrorlist) mirrors configured for $REGION"
+else
+    warn "Mirror test failed or timed out"
+    if [[ -f /etc/pacman.d/mirrorlist.backup ]]; then
+        cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
+        warn "Restored backup mirrorlist"
+        info "You may want to try a different region or check your internet connection"
+    else
+        # Create a fallback mirrorlist with global mirrors
+        warn "Creating fallback mirrorlist with worldwide mirrors"
+        cat > /etc/pacman.d/mirrorlist << 'MIRROREOF'
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch
+Server = https://archive.archlinux.org/repos/last/$repo/os/$arch
+MIRROREOF
+        info "Fallback mirrors configured"
+    fi
 fi
 
-info "Mirror configuration completed successfully"
+info "Mirror configuration process completed"
 
 newTask "==================================================\n=================================================="
 
@@ -862,4 +896,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5.5 ###
+### version 0.5.6 ###
