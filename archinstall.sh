@@ -573,7 +573,6 @@ check_package() {
     if pacman -Sp "$pkg" &>/dev/null; then
         return 0  # Package exists
     else
-        warn "Package $pkg not found in repositories"
         return 1  # Package not found
     fi
 }
