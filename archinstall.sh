@@ -475,11 +475,13 @@ fi
 newTask "==================================================\n=================================================="
 
 info "Setting mirrors for $REGION"
-# Backup existing mirrorlist
-mkdir -p /etc/pacman.d
-if [[ ! -f /etc/pacman.d/mirrorlist ]]; then
-    touch /etc/pacman.d/mirrorlist
-fi
+# Create pacman.d directory if it doesn't exist
+mkdir -p /etc/pacman.d || warn "Failed to create /etc/pacman.d"
+
+# Create a default mirrorlist with a known good mirror
+echo "Server = https://mirror.rackspace.com/archlinux/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist || warn "Failed to create initial mirrorlist"
+
+# Backup this working mirrorlist
 cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup || warn "Failed to backup mirrorlist"
 
 # Update mirrorlist with selected region
@@ -506,7 +508,7 @@ info "Mirror configuration completed successfully"
 newTask "==================================================\n=================================================="
 
 info "Updating package databases..."
-pacman -Sy || warn "Failed to update package databases"
+pacman -Sy --noconfirm || warn "Failed to update package databases"
 
 newTask "==================================================\n=================================================="
 
