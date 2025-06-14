@@ -225,9 +225,34 @@ read -rp "Select mirror region [1-5] (press Enter for United States): " REGION_C
 
 newTask "==================================================\n=================================================="
 
+# Set default values
+DEFAULT_ROOT_PASSWORD="root123"
+DEFAULT_USERNAME="user"
+DEFAULT_USER_PASSWORD="root123"
+
+echo "Press Enter or wait 30 seconds to use defaults..."
+echo "Default root password: [hidden]"
+echo "Default username: $DEFAULT_USERNAME"
+echo "Default user password: [hidden]"
+echo
+
 while true; do
-    read -rsp "Enter root password: " ROOT_PASSWORD
-    echo
+    if read -rsp "Enter root password (default: [hidden]): " -t 30 ROOT_PASSWORD; then
+        echo
+        # If user pressed enter without typing anything, use default
+        if [[ -z "$ROOT_PASSWORD" ]]; then
+            ROOT_PASSWORD="$DEFAULT_ROOT_PASSWORD"
+            echo "Using default root password"
+            break  # Skip confirmation for defaults
+        fi
+    else
+        # Timeout occurred
+        echo
+        echo "Timeout - using default root password"
+        ROOT_PASSWORD="$DEFAULT_ROOT_PASSWORD"
+        break  # Skip confirmation for defaults
+    fi
+    
     [[ -n "$ROOT_PASSWORD" ]] || { warn "Password cannot be empty"; continue; }
     
     read -rsp "Confirm root password: " ROOT_PASSWORD_CONFIRM
@@ -236,12 +261,38 @@ while true; do
     warn "Passwords don't match!"
 done
 
-read -rp "Enter username: " USERNAME
+if read -rp "Enter username (default: $DEFAULT_USERNAME): " -t 30 USERNAME; then
+    # If user pressed enter without typing anything, use default
+    if [[ -z "$USERNAME" ]]; then
+        USERNAME="$DEFAULT_USERNAME"
+        echo "Using default username: $USERNAME"
+    fi
+else
+    # Timeout occurred
+    echo
+    echo "Timeout - using default username: $DEFAULT_USERNAME"
+    USERNAME="$DEFAULT_USERNAME"
+fi
+
 [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] || error "Invalid username"
 
 while true; do
-    read -rsp "Enter password for $USERNAME: " USER_PASSWORD
-    echo
+    if read -rsp "Enter password for $USERNAME (default: [hidden]): " -t 30 USER_PASSWORD; then
+        echo
+        # If user pressed enter without typing anything, use default
+        if [[ -z "$USER_PASSWORD" ]]; then
+            USER_PASSWORD="$DEFAULT_USER_PASSWORD"
+            echo "Using default user password"
+            break  # Skip confirmation for defaults
+        fi
+    else
+        # Timeout occurred
+        echo
+        echo "Timeout - using default user password"
+        USER_PASSWORD="$DEFAULT_USER_PASSWORD"
+        break  # Skip confirmation for defaults
+    fi
+    
     [[ -n "$USER_PASSWORD" ]] || { warn "Password cannot be empty"; continue; }
     
     read -rsp "Confirm password: " USER_PASSWORD_CONFIRM
@@ -249,10 +300,6 @@ while true; do
     [[ "$USER_PASSWORD" == "$USER_PASSWORD_CONFIRM" ]] && break
     warn "Passwords don't match!"
 done
-
-export ROOT_PASSWORD
-export USERNAME
-export USER_PASSWORD
 
 newTask "==================================================\n=================================================="
 
@@ -897,4 +944,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5.6 ###
+### version 0.5.7 ###
