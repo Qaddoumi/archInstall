@@ -271,7 +271,7 @@ read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'):
 [[ "$CONFIRM" == "y" ]] || error "Operation cancelled"
 
 newTask "==================================================\n=================================================="
- 
+
 cleanup_disks() {
     local attempts=3
     info "Starting cleanup process (3 attempts)..."
