@@ -245,21 +245,39 @@ else
 fi
 
 info "Select bootloader:"
-echo "1) GRUB (default)"
-echo "2) systemd-boot"
-read -rp "Select bootloader [1-2] (press Enter for GRUB): " BOOTLOADER_CHOICE
-BOOTLOADER_CHOICE=${BOOTLOADER_CHOICE:-1}
-case $BOOTLOADER_CHOICE in
-    1) BOOTLOADER="grub" ;;
-    2)  if [[ "$BOOT_MODE" != "UEFI" ]]; then
-            error "systemd-boot requires UEFI."
-        else
-            BOOTLOADER="systemd-boot"
-        fi
-        ;;
-    *) warn "Invalid choice. Defaulting to GRUB."
-        BOOTLOADER="grub" ;;
-esac
+if [[ "$BOOT_MODE" == "UEFI" ]]; then
+    echo "1) systemd-boot (default for UEFI)"
+    echo "2) GRUB"
+    read -rp "Select bootloader [1-2] (press Enter for systemd-boot): " BOOTLOADER_CHOICE
+    BOOTLOADER_CHOICE=${BOOTLOADER_CHOICE:-1}
+    if [[ -z "$BOOTLOADER_CHOICE" ]]; then
+        info "No choice made, defaulting to systemd-boot for UEFI"
+        BOOTLOADER="systemd-boot"
+    else
+        case $BOOTLOADER_CHOICE in
+            1) BOOTLOADER="systemd-boot" ;;
+            2) BOOTLOADER="grub" ;;
+            *) warn "Invalid choice. Defaulting to systemd-boot for UEFI."
+                BOOTLOADER="systemd-boot" ;;
+        esac
+    fi
+else
+    echo "1) GRUB (default for BIOS)"
+    echo "2) systemd-boot (UEFI only)"
+    read -rp "Select bootloader [1-2] (press Enter for GRUB): " BOOTLOADER_CHOICE
+    BOOTLOADER_CHOICE=${BOOTLOADER_CHOICE:-1}
+    if [[ -z "$BOOTLOADER_CHOICE" ]]; then
+        info "No choice made, defaulting to GRUB for BIOS"
+        BOOTLOADER="grub"
+    else
+        case $BOOTLOADER_CHOICE in
+            1) BOOTLOADER="grub" ;;
+            2) error "systemd-boot requires UEFI." ;;
+            *) warn "Invalid choice. Defaulting to GRUB for BIOS."
+                BOOTLOADER="grub" ;;
+        esac
+    fi
+fi
 info "Selected bootloader: $BOOTLOADER"
 
 newTask "==================================================\n=================================================="
