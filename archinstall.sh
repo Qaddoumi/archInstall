@@ -262,21 +262,8 @@ if [[ "$BOOT_MODE" == "UEFI" ]]; then
         esac
     fi
 else
-    echo "1) GRUB (default for BIOS)"
-    echo "2) systemd-boot (UEFI only)"
-    read -rp "Select bootloader [1-2] (press Enter for GRUB): " BOOTLOADER_CHOICE
-    BOOTLOADER_CHOICE=${BOOTLOADER_CHOICE:-1}
-    if [[ -z "$BOOTLOADER_CHOICE" ]]; then
-        info "No choice made, defaulting to GRUB for BIOS"
-        BOOTLOADER="grub"
-    else
-        case $BOOTLOADER_CHOICE in
-            1) BOOTLOADER="grub" ;;
-            2) error "systemd-boot requires UEFI." ;;
-            *) warn "Invalid choice. Defaulting to GRUB for BIOS."
-                BOOTLOADER="grub" ;;
-        esac
-    fi
+    BOOTLOADER="grub"
+    info "Using GRUB as bootloader for BIOS mode as systemd-boot does not support BIOS"
 fi
 info "Selected bootloader: $BOOTLOADER"
 
@@ -495,9 +482,8 @@ if [[ "$BOOT_MODE" == "UEFI" ]]; then
     mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
     mkdir -p /mnt/boot/efi || error "Failed to create /mnt/boot/efi"
     chmod 700 /mnt/boot/efi || error "Failed to set permissions on /mnt/boot/efi"
-    mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
     mkdir -p /mnt/boot/efi/loader || error "Failed to create /mnt/boot/efi/loader"
-    mount "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
+    mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
 else
     # BIOS partitioning scheme
     info "Creating BIOS partitions..."
@@ -757,18 +743,22 @@ newTask "==================================================\n===================
 info "==== CHROOT SETUP ===="
 
 info "Configuring GRUB and hibernation in chroot..."
-arch-chroot /mnt /bin/bash <<EOF || error "Chroot commands failed"
+arch-chroot /mnt /bin/bash -s -- \
+    "$ROOT_PASSWORD" "$USERNAME" "$USER_PASSWORD" \
+    "$DISK" "$ROOT_PART" "$BOOTLOADER" "$UCODE_PKG" \
+<<'EOF' || error "Chroot commands failed"
 
 set +u
 
-# Pass variables from parent environment
-ROOT_PASSWORD="${ROOT_PASSWORD}"
-USERNAME="${USERNAME}"
-USER_PASSWORD="${USER_PASSWORD}"
-DISK="${DISK}"
-ROOT_PART="${ROOT_PART}"
-BOOTLOADER="${BOOTLOADER}"
-UCODE_PKG="${UCODE_PKG}"
+# Pass variables from parent script
+ROOT_PASSWORD="${1}"
+USERNAME="${2}"
+USER_PASSWORD="${3}"
+DISK="${4}"
+ROOT_PART="${5}"
+BOOTLOADER="${6}"
+UCODE_PKG="${7}"
+
 
 # Color codes
 RED='\033[0;31m'
@@ -777,19 +767,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-error() {
-    echo -e "\${RED}[ERROR] \$*\${NC}" >&2
-    exit 1
-}
-info() {
-    echo -e "\${GREEN}[*] \$*\${NC}"
-}
-newTask() {
-    echo -e "\${BLUE}\$*\${NC}"
-}
-warn() {
-    echo -e "\${YELLOW}[WARN] \$*\${NC}"
-}
+error() { echo -e "${RED}[ERROR] $*${NC}" >&2; exit 1; }
+info() { echo -e "${GREEN}[*] $*${NC}"; }
+newTask() { echo -e "\${BLUE}\$*\${NC}"; }
+warn() { echo -e "\${YELLOW}[WARN] \$*\${NC}"; }
 
 TIMEZONE="Asia/Amman"
 LOCALE="en_US.UTF-8"
@@ -863,6 +844,7 @@ fi
 
 info "Installing \${BOOTLOADER} bootloader for \$BOOT_MODE mode"
 if [[ "\$BOOTLOADER" == "grub" ]]; then
+    info "Installing GRUB bootloader (running grub-install)"
     if [[ "\$BOOT_MODE" == "UEFI" ]]; then
         grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable || {
             error "GRUB UEFI installation failed"
@@ -879,6 +861,7 @@ elif [[ "\$BOOTLOADER" == "systemd-boot" ]]; then
         error "systemd-boot requires UEFI boot mode"
     fi
     install -dm700 /mnt/boot/efi/loader || warn "Failed to create loader directory"
+    info "Installing systemd-boot (running bootctl)"
     bootctl --path=/boot/efi install || {
         error "systemd-boot installation failed"
     }
@@ -1120,4 +1103,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.4 ###
+### version 0.6.5 ###

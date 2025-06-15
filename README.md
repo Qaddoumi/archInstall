@@ -15,6 +15,7 @@ An automated script for installing Arch Linux with advanced configuration option
 - Network configuration
 - Hibernation support
 - GPU driver detection
+- 
 
 ## 🚀 Quick Start
 
@@ -24,10 +25,8 @@ bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/archInstall/main/arch
 ```
 
 ## 📝 Todo List
-- [ ] chose between GRUB and systemd
 - [ ] handling secure boot
 - [ ] make sure hibernate works
-- [ ] make an optoin to chose the drivers for the GPU
 
 
 ## 📜 License
