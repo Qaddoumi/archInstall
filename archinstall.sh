@@ -600,7 +600,7 @@ newTask "==================================================\n===================
 
 info "Creating swap file with hibernation support..."
 create_swap() {
-    # Get precise RAM size in bytes (not rounded to GB)
+    # Get precise RAM size in bytes
     local ram_bytes=$(awk '/MemTotal/ {print $2 * 1024}' /proc/meminfo)
     local ram_gib=$(awk "BEGIN {print int(($ram_bytes/1073741824)+0.5)}")  # Round to nearest GB
     local swapfile="/mnt/swapfile"
@@ -611,9 +611,14 @@ create_swap() {
     info "System has ${ram_gib}GB RAM (precise: $(numfmt --to=iec $ram_bytes))"
     info "Creating swap file for hibernation (size: $(numfmt --to=iec $swap_size))..."
     
-    # Create swap file
-    dd if=/dev/zero of="$swapfile" bs=1M count=$(($swap_size/1048576)) status=progress || 
-        error "Failed to create swap file"
+    # Create swap file with proper alignment for hibernation
+    # Use fallocate if available (faster), otherwise dd
+    if command -v fallocate >/dev/null 2>&1; then
+        fallocate -l $swap_size "$swapfile" || error "Failed to create swap file with fallocate"
+    else
+        dd if=/dev/zero of="$swapfile" bs=1M count=$(($swap_size/1048576)) status=progress || 
+            error "Failed to create swap file with dd"
+    fi
     chmod 600 "$swapfile"
     mkswap "$swapfile" || error "Failed to format swap file"
     swapon "$swapfile" || error "Failed to activate swap"
@@ -776,8 +781,14 @@ newTask "==================================================\n===================
 
 # Configure mkinitcpio for hibernation
 info "Configuring mkinitcpio for hibernation"
-sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck resume)/' /etc/mkinitcpio.conf
-mkinitcpio -P
+# Backup original config
+cp /etc/mkinitcpio.conf /etc/mkinitcpio.conf.backup
+
+# Add resume hook AFTER filesystems but BEFORE fsck
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems resume fsck)/' /etc/mkinitcpio.conf
+
+# Regenerate initramfs
+mkinitcpio -P || error "Failed to regenerate initramfs"
 sleep 2
 
 # Detect boot mode and set appropriate paths
@@ -818,10 +829,6 @@ else
 fi
 sleep 2
 
-# Configure GRUB for dual boot
-info "Configuring GRUB for dual boot"
-echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
-
 # Now configure hibernation with proper error checking
 info "Configuring hibernation"
 # Get root partition UUID
@@ -848,11 +855,18 @@ if ! command -v filefrag >/dev/null 2>&1; then
 fi
 
 # Get swapfile offset with multiple methods for robustness
-SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk 'NR==4 {gsub(/\\.\\.*/, "", \$4); print \$4}')
-# Alternative method if first fails
+SWAPFILE_OFFSET=\$(filefrag -v /swapfile | awk '\$1=="0:" {print substr(\$4, 1, length(\$4)-2)}')
 if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
-    warn "First method failed, trying alternative..."
-    SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk '/^ *0:/ {print \$4}' | sed 's/\\.\\.//')
+    warn "First method failed, trying second method..."
+    SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk 'NR==4 {gsub(/\\.\\.*/, "", \$4); print \$4}')
+    if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+        warn "First and second methods failed, trying alternative..."
+        SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk '/^ *0:/ {print \$4}' | sed 's/\\.\\.//')
+        if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+            warn "All methods failed, trying last resort..."
+            SWAPFILE_OFFSET=\$(filefrag -v /swapfile | head -n 4 | tail -n 1 | awk '{print \$4}' | sed 's/\.\.//')
+        fi
+    fi
 fi
 
 # If still not found, warn and set default
@@ -871,25 +885,48 @@ fi
 # Generate GRUB config with proper path
 info "Generating GRUB configuration for \$BOOT_MODE mode"
 mkdir -p /boot/grub || error "Failed to create /boot/grub directory"
-grub-mkconfig -o /boot/grub/grub.cfg || {
-    error "Failed to generate GRUB configuration for UEFI"
-}
+
+info "Backing up original GRUB configuration"
+cp /etc/default/grub /etc/default/grub.backup
+
+info "Setting GRUB command line parameters for hibernation"
+GRUB_CMDLINE="loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET"
+sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"\$GRUB_CMDLINE\"/" /etc/default/grub
+
+info "Configuring GRUB for dual boot"
+echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
+
+info "run grub-mkconfig to generate GRUB configuration"
+grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration"
 sleep 2
 
+info "Hibernation configured successfully in GRUB"
+info "Resume UUID: \$ROOT_UUID"
+info "Resume offset: \$SWAPFILE_OFFSET"
+
+newTask "==================================================\n=================================================="
+
 # (hypernate on lid close)
-# Configure systemd for hibernation on lid close (only if hibernation is properly configured)
-if [[ -n "\$SWAPFILE_OFFSET" ]] && [[ "\$SWAPFILE_OFFSET" != "0" ]]; then
-    info "Configuring systemd for hibernation on lid close..."
-    mkdir -p /etc/systemd/logind.conf.d
-    cat > /etc/systemd/logind.conf.d/hibernate.conf <<HIBERNATEEOF
+info "Configuring systemd for hibernation on lid close"
+mkdir -p /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/hibernate.conf <<HIBERNATEEOF
 [Login]
 HandleLidSwitch=hibernate
 HandleLidSwitchExternalPower=hibernate
+HandlePowerKey=hibernate
+IdleAction=ignore
+IdleActionSec=30min
 HIBERNATEEOF
-    info "Hibernation configured successfully"
-else
-    warn "Skipping hibernation configuration due to swapfile offset issues"
-fi
+
+info "Configuring systemd sleep settings for hibernation"
+cat > /etc/systemd/sleep.conf <<HIBERNATIONSLEEPEOF
+[Sleep]
+AllowSuspend=yes
+AllowHibernation=yes
+AllowSuspendThenHibernate=yes
+AllowHybridSleep=yes
+HibernateDelaySec=180min
+HIBERNATIONSLEEPEOF
 
 info "GRUB installation and configuration completed for \$BOOT_MODE mode"
 
@@ -905,12 +942,46 @@ unset ROOT_PASSWORD USER_PASSWORD
 EOF
 
 newTask "==================================================\n=================================================="
+
+#========================================
+#  HIBERNATION TESTING COMMANDS (for post-install)
+#========================================
+info "Creating hibernation test script"
+cat > /mnt/home/$USERNAME/test_hibernation.sh <<EOF
+#!/bin/bash
+echo "Testing hibernation setup..."
+echo "1. Check if swap is active:"
+swapon --show
+echo ""
+
+echo "2. Check hibernation support:"
+cat /sys/power/state
+echo ""
+
+echo "3. Check current GRUB configuration:"
+grep -i resume /proc/cmdline
+echo ""
+
+echo "4. Test hibernation (WARNING: This will hibernate the system!):"
+echo "   sudo systemctl hibernate"
+echo ""
+
+echo "5. Check systemd hibernate configuration:"
+systemctl status systemd-logind
+echo ""
+
+echo "Setup appears to be: \$(grep -q 'resume=' /proc/cmdline && echo 'COMPLETE' || echo 'INCOMPLETE')"
+EOF
+chmod +x /mnt/home/$USERNAME/test_hibernation.sh
+chown 1000:1000 /mnt/home/$USERNAME/test_hibernation.sh
+
+
+newTask "==================================================\n=================================================="
 info "==== POST-CHROOT CONFIGURATION ===="
 # Add swapfile entry to fstab for hibernation
 info "Configuring fstab for hibernation support" 
 echo "# Swap file for hibernation" >> /mnt/etc/fstab
 echo "/swapfile none swap defaults 0 0" >> /mnt/etc/fstab
-echo "resume=UUID=$(blkid -s UUID -o value ${ROOT_PART})" >> /mnt/etc/default/grub
 info "Hibernation support configured in fstab and GRUB"
 
 newTask "==================================================\n=================================================="
@@ -948,4 +1019,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5.9 ###
+### version 0.6.1 ###
