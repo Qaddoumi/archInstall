@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Disk Wipe and Arch Linux Preparation Script
-# Version 0.4 - More robust cleanup handling
+# Disk Wipe and Arch Linux Installation Script
 
 set -uo pipefail  # Strict error handling
 trap 'cleanup' EXIT  # Ensure cleanup runs on exit
@@ -37,6 +36,11 @@ newTask() {
 warn() {
     echo -e "${YELLOW}[WARN] $*${NC}"
 }
+
+# Check if running on Arch Linux
+if [ ! -f "/etc/arch-release" ]; then
+    error "This script must be run on Arch Linux"
+fi
 
 newTask "==================================================\n=================================================="
 
@@ -226,6 +230,27 @@ echo "4) Jordan"
 echo "5) Netherlands"
 
 read -rp "Select mirror region [1-5] (press Enter for United States): " REGION_CHOICE
+
+newTask "==================================================\n=================================================="
+
+# Prompt for bootloader choice
+info "Select bootloader:"
+echo "1) GRUB (default)"
+echo "2) systemd-boot"
+read -rp "Select bootloader [1-2] (press Enter for GRUB): " BOOTLOADER_CHOICE
+BOOTLOADER_CHOICE=${BOOTLOADER_CHOICE:-1}
+case $BOOTLOADER_CHOICE in
+    1) BOOTLOADER="grub" ;;
+    2)  if [[ "$BOOT_MODE" != "UEFI" ]]; then
+            error "systemd-boot requires UEFI."
+        else
+            BOOTLOADER="systemd-boot"
+        fi
+        ;;
+    *) warn "Invalid choice. Defaulting to GRUB."
+        BOOTLOADER="grub" ;;
+esac
+info "Selected bootloader: $BOOTLOADER"
 
 newTask "==================================================\n=================================================="
 
@@ -650,8 +675,12 @@ PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
 info "Adding xdg-desktop-portal for sandboxed applications"
 XDGP_PORTAL_PKGS="xdg-desktop-portal xdg-desktop-portal-gtk"
 
-# Base packages
-BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring"
+# Base packages, adjusted for bootloader choice
+if [[ "$BOOTLOADER" == "grub" ]]; then
+    BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring"
+else
+    BASE_PKGS="base linux linux-firmware systemd-boot e2fsprogs archlinux-keyring"
+fi
 OPTIONAL_PKGS="htop networkmanager sudo nano git openssh vim wget"
 
 # Convert all package groups to arrays
@@ -721,6 +750,8 @@ USERNAME="${USERNAME}"
 USER_PASSWORD="${USER_PASSWORD}"
 DISK="${DISK}"
 ROOT_PART="${ROOT_PART}"
+BOOTLOADER="${BOOTLOADER}"
+UCODE_PKG="${UCODE_PKG}"
 
 # Color codes
 RED='\033[0;31m'
@@ -812,20 +843,27 @@ else
     fi
 fi
 
-# Install and configure GRUB
-info "Installing GRUB bootloader for \$BOOT_MODE mode"
-if [[ "\$BOOT_MODE" == "UEFI" ]]; then
-    # UEFI installation
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable || {
-        error "GRUB UEFI installation failed"
+info "Installing \${BOOTLOADER} bootloader for \$BOOT_MODE mode"
+if [[ "\$BOOTLOADER" == "grub" ]]; then
+    if [[ "\$BOOT_MODE" == "UEFI" ]]; then
+        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable || {
+            error "GRUB UEFI installation failed"
+        }
+        info "GRUB installed successfully for UEFI"
+    else
+        grub-install --target=i386-pc "/dev/\$DISK" || {
+            error "GRUB BIOS installation failed"
+        }
+        info "GRUB installed successfully for BIOS"
+    fi
+elif [[ "\$BOOTLOADER" == "systemd-boot" ]]; then
+    if [[ "\$BOOT_MODE" != "UEFI" ]]; then
+        error "systemd-boot requires UEFI boot mode"
+    fi
+    bootctl --path=/boot/efi install || {
+        error "systemd-boot installation failed"
     }
-    info "GRUB installed successfully for UEFI"
-else
-    # BIOS installation
-    grub-install --target=i386-pc "/dev/\$DISK" || {
-        error "GRUB BIOS installation failed"
-    }
-    info "GRUB installed successfully for BIOS"
+    info "systemd-boot installed successfully for UEFI"
 fi
 sleep 2
 
@@ -882,25 +920,56 @@ else
     sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET\"/" /etc/default/grub
 fi
 
-# Generate GRUB config with proper path
-info "Generating GRUB configuration for \$BOOT_MODE mode"
-mkdir -p /boot/grub || error "Failed to create /boot/grub directory"
+if [[ "\$BOOTLOADER" == "grub" ]]; then
+    # Generate GRUB config with proper path
+    info "Generating GRUB configuration for \$BOOT_MODE mode"
+    mkdir -p /boot/grub || error "Failed to create /boot/grub directory"
 
-info "Backing up original GRUB configuration"
-cp /etc/default/grub /etc/default/grub.backup
+    info "Backing up original GRUB configuration"
+    cp /etc/default/grub /etc/default/grub.backup
 
-info "Setting GRUB command line parameters for hibernation"
-GRUB_CMDLINE="loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET"
-sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"\$GRUB_CMDLINE\"/" /etc/default/grub
+    info "Setting GRUB command line parameters for hibernation"
+    GRUB_CMDLINE="loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET"
+    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"\$GRUB_CMDLINE\"/" /etc/default/grub
 
-info "Configuring GRUB for dual boot"
-echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
+    info "Configuring GRUB for dual boot"
+    echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
 
-info "run grub-mkconfig to generate GRUB configuration"
-grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration"
+    info "run grub-mkconfig to generate GRUB configuration"
+    grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration"
+elif [[ "\$BOOTLOADER" == "systemd-boot" ]]; then
+    mkdir -p /boot/efi/loader/entries || error "Failed to create /boot/efi/loader/entries directory"
+    info "Configuring systemd-boot entries"
+    cat > /boot/efi/loader/loader.conf <<LOADEREOF
+default arch
+timeout 4
+console-mode max
+editor no
+LOADEREOF
+    if [[ -n "\$SWAPFILE_OFFSET" ]] && [[ "\$SWAPFILE_OFFSET" != "0" ]]; then
+        cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
+title Arch Linux
+linux /vmlinuz-linux
+initrd /initramfs-linux.img
+options root=UUID=\$ROOT_UUID rw loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET
+ENTRYEOF
+    else
+        cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
+title Arch Linux
+linux /vmlinuz-linux
+initrd /initramfs-linux.img
+options root=UUID=\$ROOT_UUID rw loglevel=3 quiet
+ENTRYEOF
+    fi
+    info "Adding microcode package to initrd"
+    if [[ -n "\$UCODE_PKG" ]]; then
+        echo "initrd /\$UCODE_PKG.img" >> /boot/efi/loader/entries/arch.conf
+    fi
+    info "systemd-boot configuration completed"
+fi
 sleep 2
 
-info "Hibernation configured successfully in GRUB"
+info "Bootloader configuration completed for \$BOOTLOADER in \$BOOT_MODE mode"
 info "Resume UUID: \$ROOT_UUID"
 info "Resume offset: \$SWAPFILE_OFFSET"
 
@@ -928,7 +997,7 @@ AllowHybridSleep=yes
 HibernateDelaySec=180min
 HIBERNATIONSLEEPEOF
 
-info "GRUB installation and configuration completed for \$BOOT_MODE mode"
+info "\${BOOTLOADER} installation and configuration completed for \$BOOT_MODE mode"
 
 newTask "==================================================\n=================================================="
 
@@ -958,8 +1027,12 @@ echo "2. Check hibernation support:"
 cat /sys/power/state
 echo ""
 
-echo "3. Check current GRUB configuration:"
-grep -i resume /proc/cmdline
+echo "3. Check current bootloader configuration:"
+if [[ "$BOOTLOADER" == "grub" ]]; then
+    grep -i resume /proc/cmdline
+elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
+    cat /boot/efi/loader/entries/arch.conf | grep resume
+fi
 echo ""
 
 echo "4. Test hibernation (WARNING: This will hibernate the system!):"
@@ -972,6 +1045,8 @@ echo ""
 
 echo "Setup appears to be: \$(grep -q 'resume=' /proc/cmdline && echo 'COMPLETE' || echo 'INCOMPLETE')"
 EOF
+
+info "Hibernation test script created at /home/$USERNAME/test_hibernation.sh"
 chmod +x /mnt/home/$USERNAME/test_hibernation.sh
 chown 1000:1000 /mnt/home/$USERNAME/test_hibernation.sh
 
@@ -982,7 +1057,7 @@ info "==== POST-CHROOT CONFIGURATION ===="
 info "Configuring fstab for hibernation support" 
 echo "# Swap file for hibernation" >> /mnt/etc/fstab
 echo "/swapfile none swap defaults 0 0" >> /mnt/etc/fstab
-info "Hibernation support configured in fstab and GRUB"
+info "Hibernation support configured in fstab and $BOOTLOADER"
 
 newTask "==================================================\n=================================================="
 
@@ -1025,4 +1100,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.1 ###
+### version 0.6.2 ###
