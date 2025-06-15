@@ -9,6 +9,7 @@ trap 'cleanup' EXIT  # Ensure cleanup runs on exit
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # rest the color to default
 
 # Security cleanup function
@@ -30,7 +31,7 @@ info() {
 }
 
 newTask() {
-    echo -e "${GREEN}$*${NC}"
+    echo -e "${BLUE}$*${NC}"
 }
 
 warn() {
@@ -470,13 +471,15 @@ if [[ "$BOOT_MODE" == "UEFI" ]]; then
     info "Formatting UEFI partitions..."
     mkfs.fat -F32 "$EFI_PART" || error "EFI format failed"
     mkfs.ext4 -F "$ROOT_PART" || error "Root format failed"
-    
+
     info "Mounting UEFI partitions..."
     mkdir -p /mnt || error "Failed to create /mnt"
     mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
     mkdir -p /mnt/boot/efi || error "Failed to create /mnt/boot/efi"
+    chmod 700 /mnt/boot/efi || error "Failed to set permissions on /mnt/boot/efi"
+    mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
+    mkdir -p /mnt/boot/efi/loader || error "Failed to create /mnt/boot/efi/loader"
     mount "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
-    
 else
     # BIOS partitioning scheme
     info "Creating BIOS partitions..."
@@ -677,7 +680,8 @@ XDGP_PORTAL_PKGS="xdg-desktop-portal xdg-desktop-portal-gtk"
 if [[ "$BOOTLOADER" == "grub" ]]; then
     BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring"
 else
-    BASE_PKGS="base linux linux-firmware systemd-boot e2fsprogs archlinux-keyring"
+    # For systemd-boot package it's part of the base packages
+    BASE_PKGS="base linux linux-firmware e2fsprogs archlinux-keyring"
 fi
 OPTIONAL_PKGS="htop networkmanager sudo nano git openssh vim wget"
 
@@ -733,6 +737,7 @@ mkdir -p /mnt/etc
 
 info "Generating fstab"
 genfstab -U /mnt >> /mnt/etc/fstab || error "Failed to generate fstab"
+sed -i '/\/boot\/efi/s/defaults/uid=0,gid=0,umask=077/' /mnt/etc/fstab
 sleep 2
 newTask "==================================================\n=================================================="
 info "==== CHROOT SETUP ===="
@@ -755,6 +760,7 @@ UCODE_PKG="${UCODE_PKG}"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 error() {
@@ -765,7 +771,7 @@ info() {
     echo -e "\${GREEN}[*] \$*\${NC}"
 }
 newTask() {
-    echo -e "\${GREEN}\$*\${NC}"
+    echo -e "\${BLUE}\$*\${NC}"
 }
 warn() {
     echo -e "\${YELLOW}[WARN] \$*\${NC}"
@@ -858,9 +864,11 @@ elif [[ "\$BOOTLOADER" == "systemd-boot" ]]; then
     if [[ "\$BOOT_MODE" != "UEFI" ]]; then
         error "systemd-boot requires UEFI boot mode"
     fi
+    install -dm700 /mnt/boot/efi/loader || warn "Failed to create loader directory"
     bootctl --path=/boot/efi install || {
         error "systemd-boot installation failed"
     }
+    chown -R root:root /boot/efi || warn "Failed to set ownership of /boot/efi"
     info "systemd-boot installed successfully for UEFI"
 fi
 sleep 2
@@ -1098,4 +1106,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.3 ###
+### version 0.6.4 ###
