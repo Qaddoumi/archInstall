@@ -769,43 +769,43 @@ NC='\033[0m'
 
 error() { echo -e "${RED}[ERROR] $*${NC}" >&2; exit 1; }
 info() { echo -e "${GREEN}[*] $*${NC}"; }
-newTask() { echo -e "\${BLUE}\$*\${NC}"; }
-warn() { echo -e "\${YELLOW}[WARN] \$*\${NC}"; }
+newTask() { echo -e "${BLUE}$*${NC}"; }
+warn() { echo -e "${YELLOW}[WARN] $*${NC}"; }
 
 TIMEZONE="Asia/Amman"
 LOCALE="en_US.UTF-8"
-HOSTNAME="\${USERNAME}Arch"
+HOSTNAME="${USERNAME}Arch"
 
 # Set timezone
-info "Setting timezone to \${TIMEZONE}"
-ln -sf /usr/share/zoneinfo/\${TIMEZONE} /etc/localtime
+info "Setting timezone to ${TIMEZONE}"
+ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
 hwclock --systohc
 
 # Set locale
-info "Setting locale to \${LOCALE}"
-sed -i "s/^#\${LOCALE}/\${LOCALE}/" /etc/locale.gen
+info "Setting locale to ${LOCALE}"
+sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen
 locale-gen
-echo "LANG=\${LOCALE}" > /etc/locale.conf
+echo "LANG=${LOCALE}" > /etc/locale.conf
 
 # Set hostname and hosts
-info "Setting hostname to \${HOSTNAME}"
-echo "\$HOSTNAME" > /etc/hostname
+info "Setting hostname to ${HOSTNAME}"
+echo "$HOSTNAME" > /etc/hostname
 cat <<HOSTSEOF > /etc/hosts
 127.0.0.1   localhost
 ::1         localhost
-127.0.1.1   \${HOSTNAME}.localdomain \${HOSTNAME}
+127.0.1.1   ${HOSTNAME}.localdomain ${HOSTNAME}
 HOSTSEOF
 
 newTask "==================================================\n=================================================="
 
 # Set root password
 info "Setting root password"
-echo "root:\${ROOT_PASSWORD}" | chpasswd
+echo "root:${ROOT_PASSWORD}" | chpasswd
 
 # Create user 
-info "Creating user \${USERNAME} account"
-useradd -m -G wheel -s /bin/bash "\${USERNAME}"
-echo "\${USERNAME}:\${USER_PASSWORD}" | chpasswd
+info "Creating user ${USERNAME} account"
+useradd -m -G wheel -s /bin/bash "${USERNAME}"
+echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
 
 newTask "==================================================\n=================================================="
 
@@ -837,27 +837,27 @@ else
     BOOT_MODE="BIOS"
     info "BIOS/Legacy boot mode detected"
     # Check if DISK variable is available
-    if [[ -z "\$DISK" ]]; then
+    if [[ -z "$DISK" ]]; then
         error "DISK variable not set. Please set DISK variable (e.g., DISK=sda)"
     fi
 fi
 
-info "Installing \${BOOTLOADER} bootloader for \$BOOT_MODE mode"
-if [[ "\$BOOTLOADER" == "grub" ]]; then
+info "Installing ${BOOTLOADER} bootloader for $BOOT_MODE mode"
+if [[ "$BOOTLOADER" == "grub" ]]; then
     info "Installing GRUB bootloader (running grub-install)"
-    if [[ "\$BOOT_MODE" == "UEFI" ]]; then
+    if [[ "$BOOT_MODE" == "UEFI" ]]; then
         grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable || {
             error "GRUB UEFI installation failed"
         }
         info "GRUB installed successfully for UEFI"
     else
-        grub-install --target=i386-pc "/dev/\$DISK" || {
+        grub-install --target=i386-pc "/dev/$DISK" || {
             error "GRUB BIOS installation failed"
         }
         info "GRUB installed successfully for BIOS"
     fi
-elif [[ "\$BOOTLOADER" == "systemd-boot" ]]; then
-    if [[ "\$BOOT_MODE" != "UEFI" ]]; then
+elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
+    if [[ "$BOOT_MODE" != "UEFI" ]]; then
         error "systemd-boot requires UEFI boot mode"
     fi
     install -dm700 /mnt/boot/efi/loader || warn "Failed to create loader directory"
@@ -873,10 +873,10 @@ sleep 2
 # Now configure hibernation with proper error checking
 info "Configuring hibernation"
 # Get root partition UUID
-ROOT_UUID=\$(blkid -s UUID -o value "\${ROOT_PART}")
-if [[ -z "\$ROOT_UUID" ]]; then
+ROOT_UUID=$(blkid -s UUID -o value "${ROOT_PART}")
+if [[ -z "$ROOT_UUID" ]]; then
     warn "Could not get root partition UUID, hibernation may not work properly"
-    ROOT_UUID=\$(blkid -s UUID -o value \$(findmnt -n -o SOURCE /))
+    ROOT_UUID=$(blkid -s UUID -o value $(findmnt -n -o SOURCE /))
 fi
 
 # Calculate swapfile offset (critical for hibernation)
@@ -896,51 +896,51 @@ if ! command -v filefrag >/dev/null 2>&1; then
 fi
 
 # Get swapfile offset with multiple methods for robustness
-SWAPFILE_OFFSET=\$(filefrag -v /swapfile | awk '\$1=="0:" {print substr(\$4, 1, length(\$4)-2)}')
-if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+SWAPFILE_OFFSET=$(filefrag -v /swapfile | awk '$1=="0:" {print substr($4, 1, length($4)-2)}')
+if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
     warn "First method failed, trying second method..."
-    SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk 'NR==4 {gsub(/\\.\\.*/, "", \$4); print \$4}')
-    if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+    SWAPFILE_OFFSET=$(filefrag -v /swapfile 2>/dev/null | awk 'NR==4 {gsub(/\\.\\.*/, "", $4); print $4}')
+    if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
         warn "First and second methods failed, trying alternative..."
-        SWAPFILE_OFFSET=\$(filefrag -v /swapfile 2>/dev/null | awk '/^ *0:/ {print \$4}' | sed 's/\\.\\.//')
-        if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+        SWAPFILE_OFFSET=$(filefrag -v /swapfile 2>/dev/null | awk '/^ *0:/ {print $4}' | sed 's/\\.\\.//')
+        if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
             warn "All methods failed, trying last resort..."
-            SWAPFILE_OFFSET=\$(filefrag -v /swapfile | head -n 4 | tail -n 1 | awk '{print \$4}' | sed 's/\.\.//')
+            SWAPFILE_OFFSET=$(filefrag -v /swapfile | head -n 4 | tail -n 1 | awk '{print $4}' | sed 's/\.\.//')
         fi
     fi
 fi
 
 # If still not found, warn and set default
 # Final validation
-if [[ -z "\$SWAPFILE_OFFSET" ]] || [[ "\$SWAPFILE_OFFSET" == "0" ]]; then
+if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
     warn " Could not determine swapfile offset. Hibernation may not work."
     info "You can calculate it manually later with: filefrag -v /swapfile"
     # Set default GRUB config without hibernation
     sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/' /etc/default/grub
 else
-    info "Swapfile offset: \$SWAPFILE_OFFSET"
+    info "Swapfile offset: $SWAPFILE_OFFSET"
     # Configure GRUB with hibernation support
-    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET\"/" /etc/default/grub
+    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET\"/" /etc/default/grub
 fi
 
-if [[ "\$BOOTLOADER" == "grub" ]]; then
+if [[ "$BOOTLOADER" == "grub" ]]; then
     # Generate GRUB config with proper path
-    info "Generating GRUB configuration for \$BOOT_MODE mode"
+    info "Generating GRUB configuration for $BOOT_MODE mode"
     mkdir -p /boot/grub || error "Failed to create /boot/grub directory"
 
     info "Backing up original GRUB configuration"
     cp /etc/default/grub /etc/default/grub.backup
 
     info "Setting GRUB command line parameters for hibernation"
-    GRUB_CMDLINE="loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET"
-    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"\$GRUB_CMDLINE\"/" /etc/default/grub
+    GRUB_CMDLINE="loglevel=3 quiet resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET"
+    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE\"/" /etc/default/grub
 
     info "Configuring GRUB for dual boot"
     echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
 
     info "run grub-mkconfig to generate GRUB configuration"
     grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration"
-elif [[ "\$BOOTLOADER" == "systemd-boot" ]]; then
+elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
     mkdir -p /boot/efi/loader/entries || error "Failed to create /boot/efi/loader/entries directory"
     info "Configuring systemd-boot entries"
     cat > /boot/efi/loader/loader.conf <<LOADEREOF
@@ -949,32 +949,32 @@ timeout 4
 console-mode max
 editor no
 LOADEREOF
-    if [[ -n "\$SWAPFILE_OFFSET" ]] && [[ "\$SWAPFILE_OFFSET" != "0" ]]; then
+    if [[ -n "$SWAPFILE_OFFSET" ]] && [[ "$SWAPFILE_OFFSET" != "0" ]]; then
         cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
 title Arch Linux
 linux /vmlinuz-linux
 initrd /initramfs-linux.img
-options root=UUID=\$ROOT_UUID rw loglevel=3 quiet resume=UUID=\$ROOT_UUID resume_offset=\$SWAPFILE_OFFSET
+options root=UUID=$ROOT_UUID rw loglevel=3 quiet resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET
 ENTRYEOF
     else
         cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
 title Arch Linux
 linux /vmlinuz-linux
 initrd /initramfs-linux.img
-options root=UUID=\$ROOT_UUID rw loglevel=3 quiet
+options root=UUID=$ROOT_UUID rw loglevel=3 quiet
 ENTRYEOF
     fi
     info "Adding microcode package to initrd"
-    if [[ -n "\$UCODE_PKG" ]]; then
-        echo "initrd /\$UCODE_PKG.img" >> /boot/efi/loader/entries/arch.conf
+    if [[ -n "$UCODE_PKG" ]]; then
+        echo "initrd /$UCODE_PKG.img" >> /boot/efi/loader/entries/arch.conf
     fi
     info "systemd-boot configuration completed"
 fi
 sleep 2
 
-info "Bootloader configuration completed for \$BOOTLOADER in \$BOOT_MODE mode"
-info "Resume UUID: \$ROOT_UUID"
-info "Resume offset: \$SWAPFILE_OFFSET"
+info "Bootloader configuration completed for $BOOTLOADER in $BOOT_MODE mode"
+info "Resume UUID: $ROOT_UUID"
+info "Resume offset: $SWAPFILE_OFFSET"
 
 newTask "==================================================\n=================================================="
 
@@ -1000,7 +1000,7 @@ AllowHybridSleep=yes
 HibernateDelaySec=180min
 HIBERNATIONSLEEPEOF
 
-info "\${BOOTLOADER} installation and configuration completed for \$BOOT_MODE mode"
+info "${BOOTLOADER} installation and configuration completed for $BOOT_MODE mode"
 
 newTask "==================================================\n=================================================="
 
@@ -1103,4 +1103,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.5 ###
+### version 0.6.6 ###
