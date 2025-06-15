@@ -231,9 +231,18 @@ echo "5) Netherlands"
 
 read -rp "Select mirror region [1-5] (press Enter for United States): " REGION_CHOICE
 
+
 newTask "==================================================\n=================================================="
 
-# Prompt for bootloader choice
+info "Detecting boot mode..."
+if [[ -d "/sys/firmware/efi" ]]; then
+    BOOT_MODE="UEFI"
+    info "UEFI boot mode detected"
+else
+    BOOT_MODE="BIOS"
+    info "BIOS/Legacy boot mode detected"
+fi
+
 info "Select bootloader:"
 echo "1) GRUB (default)"
 echo "2) systemd-boot"
@@ -419,17 +428,6 @@ newTask "==================================================\n===================
 info "Wiping disk signatures..."
 wipefs -a "/dev/$DISK" || error "Failed to wipe disk"
 sleep 2
-
-newTask "==================================================\n=================================================="
-
-info "Detecting boot mode..."
-if [[ -d "/sys/firmware/efi" ]]; then
-    BOOT_MODE="UEFI"
-    info "UEFI boot mode detected"
-else
-    BOOT_MODE="BIOS"
-    info "BIOS/Legacy boot mode detected"
-fi
 
 newTask "==================================================\n=================================================="
 
@@ -1100,4 +1098,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.2 ###
+### version 0.6.3 ###
