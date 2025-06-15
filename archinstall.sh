@@ -129,16 +129,20 @@ else
             VM_GPUS+=("virtio")
         elif echo "$gpu_lower" | grep -q "vmware\|svga"; then
             VM_GPUS+=("vmware")
-        elif echo "$gpu_lower" | grep -q "amd\|ati\|radeon"; then
-            AMD_GPUS+=("${GPU_DEVICES[$i]}")
-        elif echo "$gpu_lower" | grep -q "intel"; then
-            INTEL_GPUS+=("${GPU_DEVICES[$i]}")
-        elif echo "$gpu_lower" | grep -q "nvidia\|geforce\|quadro\|tesla"; then
+        elif echo "$gpu_lower" | grep -q "\bnvidia\b\|geforce\|quadro\|tesla"; then
             NVIDIA_GPUS+=("${GPU_DEVICES[$i]}")
+            info "NVIDIA GPU detected: ${GPU_DEVICES[$i]}"
+        elif echo "$gpu_lower" | grep -q "\bamd\b\|\bati\b\|radeon"; then
+            AMD_GPUS+=("${GPU_DEVICES[$i]}")
+            info "AMD GPU detected: ${GPU_DEVICES[$i]}"
+        elif echo "$gpu_lower" | grep -q "\bintel\b"; then
+            INTEL_GPUS+=("${GPU_DEVICES[$i]}")
+            info "Intel GPU detected: ${GPU_DEVICES[$i]}"
         elif [[ "$IS_VM" == true ]]; then
             VM_GPUS+=("generic")
         else
             OTHER_GPUS+=("${GPU_DEVICES[$i]}")
+            warn "Unknown GPU detected: ${GPU_DEVICES[$i]}"
         fi
     done
     
@@ -944,4 +948,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.5.8 ###
+### version 0.5.9 ###
