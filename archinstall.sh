@@ -691,8 +691,6 @@ info "Detected GPU packages earlier\n ${GPU_PKGS}"
 
 info "Adding pipwire packages for audio management"
 PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
-info "Adding xdg-desktop-portal for sandboxed applications"
-XDGP_PORTAL_PKGS="xdg-desktop-portal xdg-desktop-portal-gtk"
 
 # Base packages, adjusted for bootloader choice
 if [[ "$BOOTLOADER" == "grub" ]]; then
@@ -707,14 +705,12 @@ OPTIONAL_PKGS="htop networkmanager sudo nano git openssh vim wget"
 declare -a BASE_PKGS_ARR=($BASE_PKGS)
 declare -a OPTIONAL_PKGS_ARR=($OPTIONAL_PKGS)
 declare -a PIPWIRE_PKGS_ARR=($PIPWIRE_PKGS)
-declare -a XDGP_PORTAL_PKGS_ARR=($XDGP_PORTAL_PKGS)
 
 # Combine arrays
 INSTALL_PKGS_ARR=(
     "${BASE_PKGS_ARR[@]}"
     "${OPTIONAL_PKGS_ARR[@]}"
     "${PIPWIRE_PKGS_ARR[@]}"
-    "${XDGP_PORTAL_PKGS_ARR[@]}"
 )
 
 # Add conditional packages
