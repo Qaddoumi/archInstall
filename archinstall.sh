@@ -880,14 +880,24 @@ fi
 # If still not found, warn and set default
 # Final validation
 if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
-    warn " Could not determine swapfile offset. Hibernation may not work."
-    info "You can calculate it manually later with: filefrag -v /swapfile"
-    # Set default GRUB config without hibernation
-    sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"/' /etc/default/grub
+    warn "Could not determine swapfile offset. Hibernation may not work."
+    warn "You can calculate it manually later with: filefrag -v /swapfile"
+    if [[ "$BOOTLOADER" == "grub" ]]; then
+        # Set default GRUB config without hibernation
+        sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 debug"/' /etc/default/grub
+    else
+        # Set default kernel parameters without hibernation
+        sed -i 's/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 debug/' /boot/efi/loader/entries/arch.conf
+    fi
 else
     info "Swapfile offset: $SWAPFILE_OFFSET"
-    # Configure GRUB with hibernation support
-    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET\"/" /etc/default/grub
+    if [[ "$BOOTLOADER" == "grub" ]]; then
+        # Configure GRUB with hibernation support
+        sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 debug resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET\"/" /etc/default/grub
+    else
+        # Configure systemd-boot with hibernation support
+        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 debug resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}/" /boot/efi/loader/entries/arch.conf
+    fi
 fi
 
 if [[ "$BOOTLOADER" == "grub" ]]; then
@@ -936,7 +946,7 @@ title Arch Linux
 linux /arch/vmlinuz-linux
 ${UCODE_LINE}
 initrd /arch/initramfs-linux.img
-options root=UUID=${ROOT_UUID} rw loglevel=3 quiet resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
+options root=UUID=${ROOT_UUID} rw loglevel=3 debug resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
 ENTRYEOF
 
     # Create fallback entry
@@ -1013,9 +1023,9 @@ echo ""
 
 echo "3.0 Check current bootloader configuration:"
 if [[ "$BOOTLOADER" == "grub" ]]; then
-    grep -i resume /proc/cmdline
+    sudo grep -i resume /proc/cmdline
 elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
-    cat /boot/efi/loader/entries/arch.conf | grep resume
+    sudo cat /boot/efi/loader/entries/arch.conf | grep resume
 fi
 echo ""
 
