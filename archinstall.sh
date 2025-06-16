@@ -1068,7 +1068,6 @@ info "   /home/$USERNAME/test_hibernation.sh"
 info "3. If hibernation works, you can remove the test script:"
 info "   rm /home/$USERNAME/test_hibernation.sh"
 info "4. Check GPU: lspci -k | grep -A 3 -E '(VGA|3D)'\n"
-info "5. For NVIDIA users, run: nvidia-xconfig"
 
 info "Remember your credentials:"
 info "  Root password: Set during installation"
