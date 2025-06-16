@@ -382,7 +382,6 @@ cleanup_disks() {
         
         info "Unmounting partitions..."
         umount -R "/dev/$DISK"* 2>/dev/null
-        sleep 2
         
         # Deactivate LVM
         if command -v vgchange &>/dev/null; then
@@ -390,7 +389,6 @@ cleanup_disks() {
             vgchange -an 2>/dev/null
             lvremove -f $(lvs -o lv_path --noheadings 2>/dev/null | grep "$DISK") 2>/dev/null
         fi
-        sleep 2
         
         info "Disabling swap..."
         swapoff -a 2>/dev/null
@@ -408,7 +406,6 @@ cleanup_disks() {
                 info "$part unmounted successfully."
             fi
         done
-        sleep 2
         
         # Check if cleanup was successful
         if ! (mount | grep -q "/dev/$DISK") && \
@@ -418,7 +415,6 @@ cleanup_disks() {
             return 0
         fi
         
-        sleep 2
     done
     
     warn "Cleanup incomplete - some resources might still be in use"
@@ -433,7 +429,6 @@ newTask "==================================================\n===================
 
 info "Wiping disk signatures..."
 wipefs -a "/dev/$DISK" || error "Failed to wipe disk"
-sleep 2
 
 newTask "==================================================\n=================================================="
 
@@ -450,7 +445,6 @@ fi
 
 info "Creating new GPT partition table..."
 parted -s "/dev/$DISK" mklabel gpt || error "Partitioning failed"
-sleep 2
 
 newTask "==================================================\n=================================================="
 
@@ -658,7 +652,6 @@ create_swap() {
 }
 
 create_swap
-sleep 2
 
 newTask "==================================================\n=================================================="
 
@@ -680,10 +673,10 @@ PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
 
 # Base packages, adjusted for bootloader choice
 if [[ "$BOOTLOADER" == "grub" ]]; then
-    BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring"
+    BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring polkit"
 else
     # For systemd-boot package it's part of the base packages
-    BASE_PKGS="base linux linux-firmware e2fsprogs archlinux-keyring"
+    BASE_PKGS="base linux linux-firmware e2fsprogs archlinux-keyring polkit"
 fi
 OPTIONAL_PKGS="htop networkmanager sudo nano git openssh vim wget"
 
@@ -730,7 +723,6 @@ INSTALL_PKGS=$(echo "${INSTALL_PKGS_ARR[@]}" | tr -s ' ')
 info "Installing: "
 echo "$INSTALL_PKGS"
 pacstrap /mnt $INSTALL_PKGS || error "Package installation failed"
-sleep 2
 
 # Ensure /mnt/etc exists before generating fstab
 mkdir -p /mnt/etc
@@ -738,7 +730,7 @@ mkdir -p /mnt/etc
 info "Generating fstab"
 genfstab -U /mnt >> /mnt/etc/fstab || error "Failed to generate fstab"
 sed -i '/\/boot\/efi/s/defaults/uid=0,gid=0,umask=077/' /mnt/etc/fstab
-sleep 2
+
 newTask "==================================================\n=================================================="
 info "==== CHROOT SETUP ===="
 
@@ -746,6 +738,7 @@ info "Configuring GRUB and hibernation in chroot..."
 arch-chroot /mnt /bin/bash -s -- \
     "$ROOT_PASSWORD" "$USERNAME" "$USER_PASSWORD" \
     "$DISK" "$ROOT_PART" "$BOOTLOADER" "$UCODE_PKG" \
+    "$BOOT_MODE" \
 <<'EOF' || error "Chroot commands failed"
 
 set +u
@@ -758,7 +751,7 @@ DISK="${4}"
 ROOT_PART="${5}"
 BOOTLOADER="${6}"
 UCODE_PKG="${7}"
-
+BOOT_MODE="${8}"
 
 # Color codes
 RED='\033[0;31m'
@@ -819,28 +812,6 @@ sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard k
 
 # Regenerate initramfs
 mkinitcpio -P || error "Failed to regenerate initramfs"
-sleep 2
-
-# Detect boot mode and set appropriate paths
-info "Detecting boot mode for GRUB installation..."
-if [[ -d /sys/firmware/efi ]]; then
-    BOOT_MODE="UEFI"
-    info "UEFI boot mode detected"
-    # Check if EFI directory exists and is mounted
-    if [[ ! -d /boot/efi ]]; then
-        error "EFI directory /boot/efi not found. Make sure EFI partition is mounted at /boot/efi"
-    fi
-    if ! mountpoint -q /boot/efi; then
-        error "EFI partition not mounted at /boot/efi"
-    fi
-else
-    BOOT_MODE="BIOS"
-    info "BIOS/Legacy boot mode detected"
-    # Check if DISK variable is available
-    if [[ -z "$DISK" ]]; then
-        error "DISK variable not set. Please set DISK variable (e.g., DISK=sda)"
-    fi
-fi
 
 info "Installing ${BOOTLOADER} bootloader for $BOOT_MODE mode"
 if [[ "$BOOTLOADER" == "grub" ]]; then
@@ -868,7 +839,6 @@ elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
     chown -R root:root /boot/efi || warn "Failed to set ownership of /boot/efi"
     info "systemd-boot installed successfully for UEFI"
 fi
-sleep 2
 
 # Now configure hibernation with proper error checking
 info "Configuring hibernation"
@@ -925,7 +895,7 @@ fi
 
 if [[ "$BOOTLOADER" == "grub" ]]; then
     # Generate GRUB config with proper path
-    info "Generating GRUB configuration for $BOOT_MODE mode"
+    info "Generating GRUB configuration"
     mkdir -p /boot/grub || error "Failed to create /boot/grub directory"
 
     info "Backing up original GRUB configuration"
@@ -970,7 +940,6 @@ ENTRYEOF
     fi
     info "systemd-boot configuration completed"
 fi
-sleep 2
 
 info "Bootloader configuration completed for $BOOTLOADER in $BOOT_MODE mode"
 info "Resume UUID: $ROOT_UUID"
@@ -1022,15 +991,15 @@ info "Creating hibernation test script"
 cat > /mnt/home/$USERNAME/test_hibernation.sh <<EOF
 #!/bin/bash
 echo "Testing hibernation setup..."
-echo "1. Check if swap is active:"
+echo "1.0 Check if swap is active:"
 swapon --show
 echo ""
 
-echo "2. Check hibernation support:"
+echo "2.0 Check hibernation support:"
 cat /sys/power/state
 echo ""
 
-echo "3. Check current bootloader configuration:"
+echo "3.0 Check current bootloader configuration:"
 if [[ "$BOOTLOADER" == "grub" ]]; then
     grep -i resume /proc/cmdline
 elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
@@ -1038,12 +1007,14 @@ elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
 fi
 echo ""
 
-echo "4. Test hibernation (WARNING: This will hibernate the system!):"
-echo "   sudo systemctl hibernate"
+echo "4.0 Check systemd hibernate configuration:"
+systemctl status systemd-logind
 echo ""
 
-echo "5. Check systemd hibernate configuration:"
-systemctl status systemd-logind
+echo "5.0 Test hibernation (WARNING: This will hibernate the system!):"
+echo "     sudo systemctl hibernate"
+echo "5.1 If you encounter issues, check the logs:"
+echo "     journalctl -b -1 -u systemd-logind"
 echo ""
 
 echo "Setup appears to be: \$(grep -q 'resume=' /proc/cmdline && echo 'COMPLETE' || echo 'INCOMPLETE')"
@@ -1067,6 +1038,9 @@ newTask "==================================================\n===================
 info "Enabling NetworkManager service"
 arch-chroot /mnt systemctl enable NetworkManager || warn "NetworkManager not installed"
 
+info "Enabling polkit service"
+arch-chroot /mnt systemctl enable polkit || warn "Failed to enable polkit"
+
 info "Enable PipeWire services"
 arch-chroot /mnt /bin/bash <<PIPWIREEOF
 systemctl --user enable pipewire.service
@@ -1079,7 +1053,6 @@ echo "%wheel ALL=(ALL) ALL" >> /mnt/etc/sudoers || warn "Failed to configure sud
 
 # Ensure all writes are committed to disk before cleanup
 sync
-sleep 2
 
 # Cleanup will run automatically due to trap
 # cleanup  # no need to uncommit this line as it's redundant
@@ -1094,13 +1067,12 @@ info "2. After reboot, run the hibernation test script:"
 info "   /home/$USERNAME/test_hibernation.sh"
 info "3. If hibernation works, you can remove the test script:"
 info "   rm /home/$USERNAME/test_hibernation.sh"
-info "4. If you encounter issues, check the logs:"
-info "   journalctl -b -1 -u systemd-logind"
-info "2. Also verify hibernation with: sudo systemctl hibernate"
-info "3. Check GPU: lspci -k | grep -A 3 -E '(VGA|3D)'"
-info "\nRemember your credentials:"
+info "4. Check GPU: lspci -k | grep -A 3 -E '(VGA|3D)'\n"
+info "5. For NVIDIA users, run: nvidia-xconfig"
+
+info "Remember your credentials:"
 info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.6 ###
+### version 0.6.7 ###
