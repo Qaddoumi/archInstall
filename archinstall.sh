@@ -449,7 +449,6 @@ parted -s "/dev/$DISK" mklabel gpt || error "Partitioning failed"
 newTask "==================================================\n=================================================="
 
 if [[ "$BOOT_MODE" == "UEFI" ]]; then
-    # UEFI partitioning scheme
     info "Creating UEFI partitions..."
     
     # EFI System Partition
@@ -479,10 +478,8 @@ if [[ "$BOOT_MODE" == "UEFI" ]]; then
     mkdir -p /mnt/boot/efi/loader || error "Failed to create /mnt/boot/efi/loader"
     mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
 else
-    # BIOS partitioning scheme
     info "Creating BIOS partitions..."
     
-    # BIOS Boot Partition + Boot + Root
     BIOS_BOOT_SIZE="2MiB"
     BOOT_SIZE="2G"
     ROOT_SIZE="100%"
@@ -912,6 +909,19 @@ if [[ "$BOOTLOADER" == "grub" ]]; then
     grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration"
 elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
     mkdir -p /boot/efi/loader/entries || error "Failed to create /boot/efi/loader/entries directory"
+    # Copy kernel and initramfs to ESP
+    mkdir -p /boot/efi/arch
+    cp /boot/vmlinuz-linux /boot/efi/arch/
+    cp /boot/initramfs-linux.img /boot/efi/arch/
+    cp /boot/initramfs-linux-fallback.img /boot/efi/arch/
+    # Copy microcode if it exists
+    if [[ -f /boot/${UCODE_PKG}.img ]]; then
+        cp /boot/${UCODE_PKG}.img /boot/efi/arch/
+        UCODE_LINE="initrd /arch/${UCODE_PKG}.img"
+    else
+        UCODE_LINE=""
+    fi
+
     info "Configuring systemd-boot entries"
     cat > /boot/efi/loader/loader.conf <<LOADEREOF
 default arch
@@ -919,25 +929,27 @@ timeout 4
 console-mode max
 editor no
 LOADEREOF
-    if [[ -n "$SWAPFILE_OFFSET" ]] && [[ "$SWAPFILE_OFFSET" != "0" ]]; then
-        cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
+
+    # Create proper systemd-boot entry
+    cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
 title Arch Linux
-linux /vmlinuz-linux
-initrd /initramfs-linux.img
-options root=UUID=$ROOT_UUID rw loglevel=3 quiet resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET
+linux /arch/vmlinuz-linux
+${UCODE_LINE}
+initrd /arch/initramfs-linux.img
+options root=UUID=${ROOT_UUID} rw loglevel=3 quiet resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
 ENTRYEOF
-    else
-        cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
-title Arch Linux
-linux /vmlinuz-linux
-initrd /initramfs-linux.img
-options root=UUID=$ROOT_UUID rw loglevel=3 quiet
+
+    # Create fallback entry
+    cat > /boot/efi/loader/entries/arch-fallback.conf <<ENTRYEOF
+title Arch Linux (fallback initramfs)
+linux /arch/vmlinuz-linux
+${UCODE_LINE}
+initrd /arch/initramfs-linux-fallback.img
+options root=UUID=${ROOT_UUID} rw
 ENTRYEOF
-    fi
-    info "Adding microcode package to initrd"
-    if [[ -n "$UCODE_PKG" ]]; then
-        echo "initrd /$UCODE_PKG.img" >> /boot/efi/loader/entries/arch.conf
-    fi
+
+
+
     info "systemd-boot configuration completed"
 fi
 
@@ -1074,4 +1086,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.7 ###
+### version 0.6.8 ###
