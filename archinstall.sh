@@ -993,6 +993,9 @@ HIBERNATIONSLEEPEOF
 
 info "${BOOTLOADER} installation and configuration completed for $BOOT_MODE mode"
 
+info "Regenerating initramfs for hibernation support"
+mkinitcpio -P || error "Failed to regenerate initramfs"
+
 newTask "==================================================\n=================================================="
 
 # Enable services
@@ -1048,12 +1051,14 @@ chown 1000:1000 /mnt/home/$USERNAME/test_hibernation.sh
 
 
 newTask "==================================================\n=================================================="
-info "==== POST-CHROOT CONFIGURATION ===="
+echo
+info "====${BLUE} POST-CHROOT CONFIGURATION ${GREEN}===="
+echo
 # Add swapfile entry to fstab for hibernation
-info "Configuring fstab for hibernation support" 
-echo "# Swap file for hibernation" >> /mnt/etc/fstab
-echo "/swapfile none swap defaults 0 0" >> /mnt/etc/fstab
-info "Hibernation support configured in fstab and $BOOTLOADER"
+#info "Configuring fstab for hibernation support" 
+#echo "# Swap file for hibernation" >> /mnt/etc/fstab
+#echo "/swapfile none swap defaults 0 0" >> /mnt/etc/fstab
+#info "Hibernation support configured in fstab and $BOOTLOADER"
 
 newTask "==================================================\n=================================================="
 
@@ -1096,4 +1101,4 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 
-### version 0.6.8 ###
+### version 0.6.9 ###
