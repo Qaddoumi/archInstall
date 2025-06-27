@@ -1,9 +1,13 @@
 #!/bin/bash
-
-# Disk Wipe and Arch Linux Installation Script
+# Arch Linux Installation Script
 
 set -uo pipefail  # Strict error handling
 trap 'cleanup' EXIT  # Ensure cleanup runs on exit
+
+# Set default values
+DEFAULT_ROOT_PASSWORD="root123"
+DEFAULT_USERNAME="user"
+DEFAULT_USER_PASSWORD="root123"
 
 # Color codes
 RED='\033[0;31m'
@@ -294,11 +298,6 @@ else
 fi
 
 newTask "==================================================\n=================================================="
-
-# Set default values
-DEFAULT_ROOT_PASSWORD="root123"
-DEFAULT_USERNAME="user"
-DEFAULT_USER_PASSWORD="root123"
 
 echo "Press Enter or wait 30 seconds to use defaults..."
 echo "Default root password: [hidden]"
