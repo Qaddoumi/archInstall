@@ -230,8 +230,12 @@ echo "3) United Kingdom"
 echo "4) Jordan"
 echo "5) Netherlands"
 
-read -rp "Select mirror region [1-5] (press Enter for United States): " REGION_CHOICE
-
+if read -rp "Select mirror region [1-5] (press Enter for United States): " -t 30 REGION_CHOICE; then
+    info "Region choice: $REGION_CHOICE"
+else
+    REGION_CHOICE=1  # Default to United States if no input
+    info "Timeout, defaulting to United States"
+fi
 
 newTask "==================================================\n=================================================="
 
@@ -248,24 +252,46 @@ info "Select bootloader:"
 if [[ "$BOOT_MODE" == "UEFI" ]]; then
     echo "1) systemd-boot (default for UEFI)"
     echo "2) GRUB"
-    read -rp "Select bootloader [1-2] (press Enter for systemd-boot): " BOOTLOADER_CHOICE
-    BOOTLOADER_CHOICE=${BOOTLOADER_CHOICE:-1}
-    if [[ -z "$BOOTLOADER_CHOICE" ]]; then
-        info "No choice made, defaulting to systemd-boot for UEFI"
-        BOOTLOADER="systemd-boot"
+    if read -rp "Select bootloader [1-2] (press Enter for systemd-boot): " -t 30 BOOTLOADER_CHOICE; then
+        BOOTLOADER_CHOICE=${BOOTLOADER_CHOICE:-1}
+        if [[ -z "$BOOTLOADER_CHOICE" ]]; then
+            info "No choice made, defaulting to systemd-boot for UEFI"
+            BOOTLOADER="systemd-boot"
+        else
+            case $BOOTLOADER_CHOICE in
+                1) BOOTLOADER="systemd-boot" ;;
+                2) BOOTLOADER="grub" ;;
+                *) warn "Invalid choice. Defaulting to systemd-boot for UEFI."
+                    BOOTLOADER="systemd-boot" ;;
+            esac
+        fi
     else
-        case $BOOTLOADER_CHOICE in
-            1) BOOTLOADER="systemd-boot" ;;
-            2) BOOTLOADER="grub" ;;
-            *) warn "Invalid choice. Defaulting to systemd-boot for UEFI."
-                BOOTLOADER="systemd-boot" ;;
-        esac
+        BOOTLOADER="systemd-boot"
+        info "Timeout, defaulting to systemd-boot for UEFI"
     fi
 else
     BOOTLOADER="grub"
     info "Using GRUB as bootloader for BIOS mode as systemd-boot does not support BIOS"
 fi
 info "Selected bootloader: $BOOTLOADER"
+
+echo
+info "Bootloader kernel command line options:"
+echo "1) quiet (minimal output, recommended for daily use)"
+echo "2) debug (verbose output, useful for troubleshooting)"
+if read -rp "Select bootloader kernel mode [1-2] (press Enter for quiet): " -t 30 KERNEL_MODE_CHOICE; then
+    KERNEL_MODE_CHOICE=${KERNEL_MODE_CHOICE:-1}
+    if [[ "$KERNEL_MODE_CHOICE" == "2" ]]; then
+        KERNEL_CMDLINE="debug"
+        info "Bootloader will use debug mode"
+    else
+        KERNEL_CMDLINE="quiet"
+        info "Bootloader will use quiet mode"
+    fi
+else
+    KERNEL_CMDLINE="quiet"
+    info "Timeout, defaulting to quiet mode"
+fi
 
 newTask "==================================================\n=================================================="
 
@@ -735,7 +761,7 @@ info "Configuring GRUB and hibernation in chroot..."
 arch-chroot /mnt /bin/bash -s -- \
     "$ROOT_PASSWORD" "$USERNAME" "$USER_PASSWORD" \
     "$DISK" "$ROOT_PART" "$BOOTLOADER" "$UCODE_PKG" \
-    "$BOOT_MODE" \
+    "$BOOT_MODE" "$KERNEL_CMDLINE" \
 <<'EOF' || error "Chroot commands failed"
 
 set +u
@@ -749,6 +775,7 @@ ROOT_PART="${5}"
 BOOTLOADER="${6}"
 UCODE_PKG="${7}"
 BOOT_MODE="${8}"
+KERNEL_CMDLINE="${9}"
 
 # Color codes
 RED='\033[0;31m'
@@ -884,19 +911,19 @@ if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
     warn "You can calculate it manually later with: filefrag -v /swapfile"
     if [[ "$BOOTLOADER" == "grub" ]]; then
         # Set default GRUB config without hibernation
-        sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 debug"/' /etc/default/grub
+        sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 $KERNEL_CMDLINE"/' /etc/default/grub
     else
         # Set default kernel parameters without hibernation
-        sed -i 's/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 debug/' /boot/efi/loader/entries/arch.conf
+        sed -i 's/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 $KERNEL_CMDLINE/' /boot/efi/loader/entries/arch.conf
     fi
 else
     info "Swapfile offset: $SWAPFILE_OFFSET"
     if [[ "$BOOTLOADER" == "grub" ]]; then
         # Configure GRUB with hibernation support
-        sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 debug resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET\"/" /etc/default/grub
+        sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 $KERNEL_CMDLINE resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET\"/" /etc/default/grub
     else
         # Configure systemd-boot with hibernation support
-        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 debug resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}/" /boot/efi/loader/entries/arch.conf
+        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}/" /boot/efi/loader/entries/arch.conf
     fi
 fi
 
@@ -946,7 +973,7 @@ title Arch Linux
 linux /arch/vmlinuz-linux
 ${UCODE_LINE}
 initrd /arch/initramfs-linux.img
-options root=UUID=${ROOT_UUID} rw loglevel=3 debug resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
+options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
 ENTRYEOF
 
     # Create fallback entry
