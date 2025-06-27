@@ -10,7 +10,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # rest the color to default
+NO_COLOR='\033[0m' # rest the color to default
 
 # Security cleanup function
 cleanup() {
@@ -22,20 +22,20 @@ cleanup() {
 }
 
 error() {
-    echo -e "${RED}[ERROR] $*${NC}" >&2
+    echo -e "${RED}[ERROR] $*${NO_COLOR}" >&2
     exit 1
 }
 
 info() {
-    echo -e "${GREEN}[*] $*${NC}"
+    echo -e "${GREEN}[*] $*${NO_COLOR}"
 }
 
 newTask() {
-    echo -e "${BLUE}$*${NC}"
+    echo -e "${BLUE}$*${NO_COLOR}"
 }
 
 warn() {
-    echo -e "${YELLOW}[WARN] $*${NC}"
+    echo -e "${YELLOW}[WARN] $*${NO_COLOR}"
 }
 
 # Check if running on Arch Linux
@@ -524,7 +524,7 @@ mount | grep "/dev/$DISK"
 
 newTask "==================================================\n=================================================="
 
-info "\n${GREEN}[✓] Partitioning Summary:${NC}"
+info "\n${GREEN}[✓] Partitioning Summary:${NO_COLOR}"
 info "Boot Mode: $BOOT_MODE"
 if [[ "$BOOT_MODE" == "UEFI" ]]; then
     info "EFI System Partition: $EFI_PART (mounted at /mnt/boot/efi)"
@@ -675,7 +675,7 @@ else
     # For systemd-boot package it's part of the base packages
     BASE_PKGS="base linux linux-firmware e2fsprogs archlinux-keyring polkit"
 fi
-OPTIONAL_PKGS="htop networkmanager sudo nano git openssh vim wget"
+OPTIONAL_PKGS="htop curl networkmanager sudo nano git openssh vim wget"
 
 # Convert all package groups to arrays
 declare -a BASE_PKGS_ARR=($BASE_PKGS)
@@ -755,12 +755,12 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NO_COLOR='\033[0m'
 
-error() { echo -e "${RED}[ERROR] $*${NC}" >&2; exit 1; }
-info() { echo -e "${GREEN}[*] $*${NC}"; }
-newTask() { echo -e "${BLUE}$*${NC}"; }
-warn() { echo -e "${YELLOW}[WARN] $*${NC}"; }
+error() { echo -e "${RED}[ERROR] $*${NO_COLOR}" >&2; exit 1; }
+info() { echo -e "${GREEN}[*] $*${NO_COLOR}"; }
+newTask() { echo -e "${BLUE}$*${NO_COLOR}"; }
+warn() { echo -e "${YELLOW}[WARN] $*${NO_COLOR}"; }
 
 TIMEZONE="Asia/Amman"
 LOCALE="en_US.UTF-8"
@@ -1087,8 +1087,8 @@ sleep 1
 
 newTask "==================================================\n==================================================\n"
 
-info "\n${GREEN}[✓] INSTALLATION COMPLETE!${NC}"
-info "\n${YELLOW}Next steps:${NC}"
+info "\n${GREEN}[✓] INSTALLATION COMPLETE!${NO_COLOR}"
+info "\n${YELLOW}Next steps:${NO_COLOR}"
 info "1. Reboot: systemctl reboot"
 info "2. After reboot, run the hibernation test script:"
 info "   /home/$USERNAME/test_hibernation.sh"
