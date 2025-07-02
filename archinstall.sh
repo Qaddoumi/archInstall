@@ -701,10 +701,10 @@ PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
 
 # Base packages, adjusted for bootloader choice
 if [[ "$BOOTLOADER" == "grub" ]]; then
-    BASE_PKGS="base linux linux-firmware grub efibootmgr os-prober e2fsprogs archlinux-keyring polkit"
+    BASE_PKGS="base linux linux-firmware linux-zen linux-zen-headers grub efibootmgr os-prober e2fsprogs archlinux-keyring polkit"
 else
     # For systemd-boot package it's part of the base packages
-    BASE_PKGS="base linux linux-firmware e2fsprogs archlinux-keyring polkit"
+    BASE_PKGS="base linux linux-firmware linux-zen linux-zen-headers e2fsprogs archlinux-keyring polkit"
 fi
 OPTIONAL_PKGS="curl networkmanager sudo git openssh"
 
@@ -956,6 +956,9 @@ elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
     cp /boot/vmlinuz-linux /boot/efi/arch/
     cp /boot/initramfs-linux.img /boot/efi/arch/
     cp /boot/initramfs-linux-fallback.img /boot/efi/arch/
+    cp /boot/vmlinuz-linux-zen /boot/efi/arch/
+    cp /boot/initramfs-linux-zen.img /boot/efi/arch/
+    cp /boot/initramfs-linux-zen-fallback.img /boot/efi/arch/
     # Copy microcode if it exists
     if [[ -f /boot/${UCODE_PKG}.img ]]; then
         cp /boot/${UCODE_PKG}.img /boot/efi/arch/
@@ -990,6 +993,23 @@ initrd /arch/initramfs-linux-fallback.img
 options root=UUID=${ROOT_UUID} rw
 ENTRYEOF
 
+# Create zen entry
+    cat > /boot/efi/loader/entries/arch-zen.conf <<ZENEOF
+title Arch Linux (linux-zen)
+linux /arch/vmlinuz-linux-zen
+${UCODE_LINE}
+initrd /arch/initramfs-linux-zen.img
+options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
+ZENEOF
+
+    # Create zen fallback entry
+    cat > /boot/efi/loader/entries/arch-zen-fallback.conf <<ZENFALLBACKEOF
+title Arch Linux (linux-zen fallback initramfs)
+linux /arch/vmlinuz-linux-zen
+${UCODE_LINE}
+initrd /arch/initramfs-linux-zen-fallback.img
+options root=UUID=${ROOT_UUID} rw
+ZENFALLBACKEOF
 
 
     info "systemd-boot configuration completed"
