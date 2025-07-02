@@ -700,7 +700,7 @@ else
     # For systemd-boot package it's part of the base packages
     BASE_PKGS="base linux linux-firmware e2fsprogs archlinux-keyring polkit"
 fi
-OPTIONAL_PKGS="htop curl networkmanager sudo nano git openssh vim wget"
+OPTIONAL_PKGS="curl networkmanager sudo git openssh"
 
 # Convert all package groups to arrays
 declare -a BASE_PKGS_ARR=($BASE_PKGS)
