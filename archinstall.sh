@@ -1126,5 +1126,24 @@ info "Remember your credentials:"
 info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
+echo
+info "Would you like to run my post-install script? to install sway and other packages? with configuration files ?"
+read -rp "Type 'yes' to run post-install script, or anything else to skip: " RUN_POST_INSTALL
+if [[ "$RUN_POST_INSTALL" == "yes" ]]; then
+    info "Running post-install script..."
+    # Run the post-install script
+    arch-chroot /mnt /bin/bash -s -- "$USERNAME" <<'POSTINSTALLEOF'
 
+echo "Temporarily disabling sudo password for wheel group"
+echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/Install.sh)
+
+echo "Restoring sudo password requirement for wheel group"
+sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d'
+
+POSTINSTALLEOF
+else
+    info "Skipping post-install script, you may reboot now."
+fi
 ### version 0.6.9 ###
