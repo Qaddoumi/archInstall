@@ -388,6 +388,12 @@ read -rp "WARNING: ALL DATA ON /dev/$DISK WILL BE DESTROYED! Confirm (type 'y'):
 
 newTask "==================================================\n=================================================="
 
+info "Would you like to run my post-install script? to install sway and other packages? with my configuration files ?"
+read -rp "Type 'y', or hit enter to run post-install script, and anything else to skip: " RUN_POST_INSTALL
+RUN_POST_INSTALL=${RUN_POST_INSTALL:-y}
+
+newTask "==================================================\n=================================================="
+
 cleanup_disks() {
     local attempts=3
     info "Starting cleanup process (3 attempts)..."
@@ -1126,10 +1132,7 @@ info "Remember your credentials:"
 info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
-echo
-info "Would you like to run my post-install script? to install sway and other packages? with my configuration files ?"
-read -rp "Type 'y', or hit enter to run post-install script, and anything else to skip: " RUN_POST_INSTALL
-RUN_POST_INSTALL=${RUN_POST_INSTALL:-y}
+newTask "==================================================\n==================================================\n"
 
 if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     info "Running post-install script..."
