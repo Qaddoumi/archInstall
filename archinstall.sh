@@ -1127,20 +1127,28 @@ info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
 echo
-info "Would you like to run my post-install script? to install sway and other packages? with configuration files ?"
-read -rp "Type 'yes' to run post-install script, or anything else to skip: " RUN_POST_INSTALL
-if [[ "$RUN_POST_INSTALL" == "yes" ]]; then
+info "Would you like to run my post-install script? to install sway and other packages? with my configuration files ?"
+read -rp "Type 'y', or hit enter to run post-install script, and anything else to skip: " RUN_POST_INSTALL
+RUN_POST_INSTALL=${RUN_POST_INSTALL:-y}
+
+if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     info "Running post-install script..."
-    # Run the post-install script
+
     arch-chroot /mnt /bin/bash -s -- "$USERNAME" <<'POSTINSTALLEOF'
+#!/bin/bash
+
+USER="$1"  # Assigns the passed username to $USER
 
 echo "Temporarily disabling sudo password for wheel group"
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/Install.sh)
+su - "$USER" <<'USEREOF'
+    echo "Running post-install script as user $USER..."
+    bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh)
+USEREOF
 
 echo "Restoring sudo password requirement for wheel group"
-sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d'
+sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d' /etc/sudoers
 
 POSTINSTALLEOF
 else
