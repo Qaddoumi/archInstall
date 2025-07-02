@@ -1152,7 +1152,9 @@ sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d' /etc/sudoers
 
 POSTINSTALLEOF
 else
-    info "Skipping post-install script, you may reboot now."
+    warn "Skipping post-install script, you may reboot now."
+    info "if you would like to run my post-install script later, you can run it with the command:"
+    info "bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh)"
 fi
 
 ### version 0.7.1 ###
