@@ -1154,4 +1154,5 @@ POSTINSTALLEOF
 else
     info "Skipping post-install script, you may reboot now."
 fi
-### version 0.6.9 ###
+
+### version 0.7.1 ###
