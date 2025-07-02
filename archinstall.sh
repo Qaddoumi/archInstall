@@ -1137,7 +1137,7 @@ if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     arch-chroot /mnt /bin/bash -s -- "$USERNAME" <<'POSTINSTALLEOF'
 #!/bin/bash
 
-USER="$1"  # Assigns the passed username to $USER
+USER="$1" # Assigns the passed username to $USER
 
 echo "Temporarily disabling sudo password for wheel group"
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
