@@ -1002,8 +1002,8 @@ ZENFALLBACKEOF
         warn "Could not determine swapfile offset. Hibernation may not work."
         warn "You can calculate it manually later with: filefrag -v /swapfile"
         # Set default kernel parameters without hibernation
-        sed -i "s/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 $KERNEL_CMDLINE/" /boot/efi/loader/entries/arch.conf
-        sed -i "s/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 $KERNEL_CMDLINE/" /boot/efi/loader/entries/arch-zen.conf
+        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE/" /boot/efi/loader/entries/arch.conf
+        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE/" /boot/efi/loader/entries/arch-zen.conf
     else
         info "Swapfile offset: $SWAPFILE_OFFSET"
         # Configure systemd-boot with hibernation support (files already created with hibernation)
