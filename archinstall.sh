@@ -909,29 +909,6 @@ if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
     fi
 fi
 
-# If still not found, warn and set default
-# Final validation
-if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
-    warn "Could not determine swapfile offset. Hibernation may not work."
-    warn "You can calculate it manually later with: filefrag -v /swapfile"
-    if [[ "$BOOTLOADER" == "grub" ]]; then
-        # Set default GRUB config without hibernation
-        sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 $KERNEL_CMDLINE"/' /etc/default/grub
-    else
-        # Set default kernel parameters without hibernation
-        sed -i 's/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 $KERNEL_CMDLINE/' /boot/efi/loader/entries/arch.conf
-    fi
-else
-    info "Swapfile offset: $SWAPFILE_OFFSET"
-    if [[ "$BOOTLOADER" == "grub" ]]; then
-        # Configure GRUB with hibernation support
-        sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 $KERNEL_CMDLINE resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET\"/" /etc/default/grub
-    else
-        # Configure systemd-boot with hibernation support
-        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}/" /boot/efi/loader/entries/arch.conf
-    fi
-fi
-
 if [[ "$BOOTLOADER" == "grub" ]]; then
     # Generate GRUB config with proper path
     info "Generating GRUB configuration"
@@ -940,15 +917,24 @@ if [[ "$BOOTLOADER" == "grub" ]]; then
     info "Backing up original GRUB configuration"
     cp /etc/default/grub /etc/default/grub.backup
 
-    info "Setting GRUB command line parameters for hibernation"
-    GRUB_CMDLINE="loglevel=3 quiet resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET"
-    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE\"/" /etc/default/grub
+    # Final validation for GRUB
+    if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
+        warn "Could not determine swapfile offset. Hibernation may not work."
+        warn "You can calculate it manually later with: filefrag -v /swapfile"
+        # Set default GRUB config without hibernation
+        sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 $KERNEL_CMDLINE\"/" /etc/default/grub
+    else
+        info "Swapfile offset: $SWAPFILE_OFFSET"
+        # Configure GRUB with hibernation support
+        sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 $KERNEL_CMDLINE resume=UUID=$ROOT_UUID resume_offset=$SWAPFILE_OFFSET\"/" /etc/default/grub
+    fi
 
     info "Configuring GRUB for dual boot"
     echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
 
     info "run grub-mkconfig to generate GRUB configuration"
     grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration"
+
 elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
     mkdir -p /boot/efi/loader/entries || error "Failed to create /boot/efi/loader/entries directory"
     # Copy kernel and initramfs to ESP
@@ -993,7 +979,7 @@ initrd /arch/initramfs-linux-fallback.img
 options root=UUID=${ROOT_UUID} rw
 ENTRYEOF
 
-# Create zen entry
+    # Create zen entry
     cat > /boot/efi/loader/entries/arch-zen.conf <<ZENEOF
 title Arch Linux (linux-zen)
 linux /arch/vmlinuz-linux-zen
@@ -1011,6 +997,18 @@ initrd /arch/initramfs-linux-zen-fallback.img
 options root=UUID=${ROOT_UUID} rw
 ZENFALLBACKEOF
 
+    # Final validation for systemd-boot (after files are created)
+    if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
+        warn "Could not determine swapfile offset. Hibernation may not work."
+        warn "You can calculate it manually later with: filefrag -v /swapfile"
+        # Set default kernel parameters without hibernation
+        sed -i 's/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 $KERNEL_CMDLINE/' /boot/efi/loader/entries/arch.conf
+        sed -i 's/^options.*/options root=UUID='${ROOT_UUID}' rw loglevel=3 $KERNEL_CMDLINE/' /boot/efi/loader/entries/arch-zen.conf
+    else
+        info "Swapfile offset: $SWAPFILE_OFFSET"
+        # Configure systemd-boot with hibernation support (files already created with hibernation)
+        info "systemd-boot entries already configured with hibernation support"
+    fi
 
     info "systemd-boot configuration completed"
 fi
