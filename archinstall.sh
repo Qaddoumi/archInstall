@@ -1207,17 +1207,18 @@ newTask "==================================================\n===================
 if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     info "Running post-install script..."
 
-    arch-chroot /mnt /bin/bash -s -- "$USERNAME" <<'POSTINSTALLEOF'
+    arch-chroot /mnt /bin/bash -s -- "$USERNAME" "$login_manager_choice" <<'POSTINSTALLEOF'
 #!/bin/bash
 
 USER="$1" # Assigns the passed username to $USER
+LOGIN_MANAGER="$2" # Assigns the passed login manager choice to $LOGIN_MANAGER
 
 echo "Temporarily disabling sudo password for wheel group"
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 su - "$USER" <<'USEREOF'
-    echo "Running post-install script as user $USER..."
-    bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh)
+    echo "Running post-install script as user $USER with login manager $LOGIN_MANAGER...
+    bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) "$LOGIN_MANAGER"
 USEREOF
 
 echo "Restoring sudo password requirement for wheel group"
