@@ -1207,7 +1207,7 @@ newTask "==================================================\n===================
 if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     info "Running post-install script..."
 
-    arch-chroot /mnt /bin/bash -s -- "$USERNAME" "$login_manager_choice" <<'POSTINSTALLEOF'
+    arch-chroot /mnt /bin/bash -s -- "$USERNAME" "$login_manager_choice" <<'POSTINSTALLEOF' || error "Post-install script failed to run"
 #!/bin/bash
 
 USER="$1" # Assigns the passed username to $USER
