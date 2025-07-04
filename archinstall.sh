@@ -391,6 +391,21 @@ newTask "==================================================\n===================
 info "Would you like to run my post-install script? to install sway and other packages? with my configuration files ?"
 read -rp "Type 'y', or hit enter to run post-install script, and anything else to skip: " RUN_POST_INSTALL
 RUN_POST_INSTALL=${RUN_POST_INSTALL:-y}
+login_manager_choice=""  # Default login manager
+if $RUN_POST_INSTALL == "y"; then
+    info "Post-install script will be run after installation"
+    echo ""
+    info "chose the login manager you want to use"
+    info "1) SDDM (Simple Desktop Display Manager)"
+    info "2) Ly  (TUI lightweight display manager)"
+    read -r -p "Select login manager [1-2] (default: 2): " login_manager_choice_num
+    if $login_manager_choice_num == 2 ; then
+        $login_manager_choice="ly"
+    else 
+        $login_manager_choice="sddm"
+else
+    info "Skipping post-install script"
+fi
 
 newTask "==================================================\n=================================================="
 
