@@ -403,6 +403,7 @@ if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     if [[ "$login_manager_choice_num" == "2" ]]; then
         login_manager_choice="ly"
     fi
+    info "$login_manager_choice will be installed"
 else
     info "Skipping post-install script"
 fi
