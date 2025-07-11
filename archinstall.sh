@@ -1219,7 +1219,7 @@ echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 su - "$USER" <<'USEREOF'
     echo "Running post-install script as user $USER with login manager $LOGIN_MANAGER..."
-    bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) "$LOGIN_MANAGER"
+    bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) --login-manager "$LOGIN_MANAGER" --username "$USERNAME"
 USEREOF
 
 echo "Restoring sudo password requirement for wheel group"
