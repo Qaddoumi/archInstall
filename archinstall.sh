@@ -740,10 +740,18 @@ info "Preparing to install essential packages..."
 # Install essential packages
 CPU_VENDOR=$(grep -m 1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
 info "Detected CPU vendor: $CPU_VENDOR"
+# Initialize array for inegrated gpu
+declare -a INEGRATED_GPU_PKGS=()
 # Fix microcode package naming
 case "$CPU_VENDOR" in
-    "GenuineIntel") UCODE_PKG="intel-ucode" ;;
-    "AuthenticAMD") UCODE_PKG="amd-ucode" ;;
+    "GenuineIntel") 
+        UCODE_PKG="intel-ucode" 
+        INEGRATED_GPU_PKGS+=("vulkan-intel" "intel-media-sdk" "intel-compute-runtime" "libva-intel-driver" "libva-utils")
+    ;;
+    "AuthenticAMD") 
+        UCODE_PKG="amd-ucode" 
+        INEGRATED_GPU_PKGS+=("xf86-video-amdgpu" "vulkan-radeon" "libva-mesa-driver" "mesa-vdpau" "amdvlk" "radeontop")
+    ;;
     *) UCODE_PKG=""; warn "Unknown CPU vendor: $CPU_VENDOR" ;;
 esac
 
@@ -771,6 +779,7 @@ INSTALL_PKGS_ARR=(
     "${BASE_PKGS_ARR[@]}"
     "${OPTIONAL_PKGS_ARR[@]}"
     "${PIPWIRE_PKGS_ARR[@]}"
+    "${INEGRATED_GPU_PKGS[@]}"
 )
 
 # Add conditional packages
