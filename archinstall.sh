@@ -1218,7 +1218,7 @@ if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     info "Running post-install script..."
 
     arch-chroot /mnt /bin/bash <<POSTINSTALLEOF || error "Post-install script failed to run"
-echo -e "\n\n"
+echo -e "\n"
 echo "Temporarily disabling sudo password for wheel group"
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
@@ -1228,7 +1228,7 @@ bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh)
 
 echo "Restoring sudo password requirement for wheel group"
 sudo sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d' /etc/sudoers
-
+echo -e "\n"
 POSTINSTALLEOF
 else
     warn "Skipping post-install script, you may reboot now."
