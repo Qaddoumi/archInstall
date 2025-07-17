@@ -1233,9 +1233,9 @@ echo -e "\n"
 echo "Temporarily disabling sudo password for wheel group"
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-su "$USERNAME"
+su "$USERNAME" || warn "Failed to switch to user $USERNAME"
 echo "Running post-install script as user $USERNAME with login manager $login_manager_choice..."
-bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) --login-manager "$login_manager_choice" --username "$USERNAME"
+bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) --login-manager "$login_manager_choice"
 
 echo "Restoring sudo password requirement for wheel group"
 sudo sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d' /etc/sudoers
@@ -1244,7 +1244,7 @@ POSTINSTALLEOF
 else
     warn "Skipping post-install script, you may reboot now."
     info "if you would like to run my post-install script later, you can run it with the command:"
-    info "bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh)"
+    info "bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) --login-manager \"$login_manager_choice\""
 fi
 
 ### version 0.7.2 ###
