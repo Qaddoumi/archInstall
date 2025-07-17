@@ -1228,17 +1228,24 @@ newTask "==================================================\n===================
 if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     info "Running post-install script..."
 
-    arch-chroot /mnt /bin/bash <<POSTINSTALLEOF || error "Post-install script failed to run"
+    arch-chroot /mnt /bin/bash -s -- "$USERNAME" "$login_manager_choice" <<'POSTINSTALLEOF' || error "Post-install script failed to run"
+
+USER_NAME="$1"
+LOGIN_MANAGER="$2"
+
 echo -e "\n"
+echo -e "Reseving Username: $USER_NAME and Login Manager: $LOGIN_MANAGER"
+
 echo "Temporarily disabling sudo password for wheel group"
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-su "$USERNAME" || warn "Failed to switch to user $USERNAME"
-echo "Running post-install script as user $USERNAME with login manager $login_manager_choice..."
-bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) --login-manager "$login_manager_choice"
+su "$USER_NAME" <<USEREOF
+    echo "Running post-install script as user \$USER with login manager $LOGIN_MANAGER..."
+    bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) --login-manager "$LOGIN_MANAGER" || echo "Failed to run the install script"
+USEREOF
 
 echo "Restoring sudo password requirement for wheel group"
-sudo sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d' /etc/sudoers
+sed -i '/^%wheel ALL=(ALL) NOPASSWD: ALL/d' /etc/sudoers
 echo -e "\n"
 POSTINSTALLEOF
 else
