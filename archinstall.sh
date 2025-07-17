@@ -1210,21 +1210,6 @@ sleep 1
 
 newTask "==================================================\n==================================================\n"
 
-info "\n${GREEN}[✓] INSTALLATION COMPLETE!${NO_COLOR}"
-info "\n${YELLOW}Next steps:${NO_COLOR}"
-info "1. Reboot: systemctl reboot"
-info "2. After reboot, run the hibernation test script:"
-info "   /home/$USERNAME/test_hibernation.sh"
-info "3. If hibernation works, you can remove the test script:"
-info "   rm /home/$USERNAME/test_hibernation.sh"
-info "4. Check GPU: lspci -k | grep -A 3 -E '(VGA|3D)'\n"
-
-info "Remember your credentials:"
-info "  Root password: Set during installation"
-info "  User: $USERNAME (with sudo privileges)"
-
-newTask "==================================================\n==================================================\n"
-
 if [[ "$RUN_POST_INSTALL" == "y" ]]; then
     info "Running post-install script..."
 
@@ -1253,5 +1238,20 @@ else
     info "if you would like to run my post-install script later, you can run it with the command:"
     info "bash <(curl -sL https://raw.githubusercontent.com/Qaddoumi/sway/main/install.sh) --login-manager \"$login_manager_choice\""
 fi
+
+newTask "==================================================\n==================================================\n"
+
+info "\n${GREEN}[✓] INSTALLATION COMPLETE!${NO_COLOR}"
+info "\n${YELLOW}Next steps:${NO_COLOR}"
+info "1. Reboot: systemctl reboot"
+info "2. After reboot, run the hibernation test script:"
+info "   /home/$USERNAME/test_hibernation.sh"
+info "3. If hibernation works, you can remove the test script:"
+info "   rm /home/$USERNAME/test_hibernation.sh"
+info "4. Check GPU: lspci -k | grep -A 3 -E '(VGA|3D)'\n"
+
+info "Remember your credentials:"
+info "  Root password: Set during installation"
+info "  User: $USERNAME (with sudo privileges)"
 
 ### version 0.7.2 ###
