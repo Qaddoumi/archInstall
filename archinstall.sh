@@ -241,6 +241,21 @@ else
     info "Timeout, defaulting to United States"
 fi
 
+# Default to United States (1) if empty
+REGION_CHOICE=${REGION_CHOICE:-1}
+
+# Map selection to country codes used by archlinux.org API
+case $REGION_CHOICE in
+    1) COUNTRY_CODE="US"; REGION="United States" ;;
+    2) COUNTRY_CODE="DE"; REGION="Germany" ;;
+    3) COUNTRY_CODE="GB"; REGION="United Kingdom" ;;
+    4) COUNTRY_CODE="JO"; REGION="Jordan" ;;
+    5) COUNTRY_CODE="NL"; REGION="Netherlands" ;;
+    *) error "Invalid region selection" ;;
+esac
+
+info "Mirror will be set to $REGION"
+
 newTask "==================================================\n=================================================="
 
 info "Detecting boot mode..."
@@ -621,18 +636,14 @@ fi
 
 newTask "==================================================\n=================================================="
 
-# Default to United States (1) if empty
-REGION_CHOICE=${REGION_CHOICE:-1}
-
-# Map selection to country codes used by archlinux.org API
-case $REGION_CHOICE in
-    1) COUNTRY_CODE="US"; REGION="United States" ;;
-    2) COUNTRY_CODE="DE"; REGION="Germany" ;;
-    3) COUNTRY_CODE="GB"; REGION="United Kingdom" ;;
-    4) COUNTRY_CODE="JO"; REGION="Jordan" ;;
-    5) COUNTRY_CODE="NL"; REGION="Netherlands" ;;
-    *) error "Invalid region selection" ;;
-esac
+info "Enabling NTP (timedate) synchronization"
+timedatectl set-ntp true || warn "Failed to enable NTP synchronization"
+info "Initializing pacman keyring"
+pacman-key --init || warn "Failed to initialize pacman keyring"
+info "Populating pacman keyring"
+pacman-key --populate archlinux || warn "Failed to populate pacman keyring"
+info "Syncing archlinux-keyring"
+pacman -Sy archlinux-keyring --noconfirm || warn "Failed to sync archlinux-keyring"
 
 info "Setting mirrors for $REGION"
 # Create pacman.d directory if it doesn't exist
