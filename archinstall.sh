@@ -546,7 +546,8 @@ if [[ "$BOOT_MODE" == "UEFI" ]]; then
         mkdir -p /mnt/boot/efi || error "Failed to create /mnt/boot/efi"
         chmod 700 /mnt/boot/efi || error "Failed to set permissions on /mnt/boot/efi"
         mkdir -p /mnt/boot/efi/loader || error "Failed to create /mnt/boot/efi/loader"
-        mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
+        #mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
+        mount "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
     fi
 else
     info "Creating BIOS partitions..."
@@ -785,7 +786,7 @@ case "$CPU_VENDOR" in
     *) UCODE_PKG=""; warn "Unknown CPU vendor: $CPU_VENDOR" ;;
 esac
 
-info "Detected GPU packages earlier\n ${GPU_PKGS}"
+info "Installing GPU packages :\n ${GPU_PKGS}"
 
 info "Adding pipwire packages for audio management"
 PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
@@ -849,7 +850,14 @@ mkdir -p /mnt/etc
 
 info "Generating fstab"
 genfstab -U /mnt >> /mnt/etc/fstab || error "Failed to generate fstab"
-sed -i '/\/boot\/efi/s/defaults/uid=0,gid=0,umask=077/' /mnt/etc/fstab
+# Fix EFI partition permissions based on bootloader
+if [[ "$BOOTLOADER" == "systemd-boot" ]]; then
+    info "Fixing /boot permissions for systemd-boot"
+    sed -i '/\/boot.*vfat/s/defaults/defaults,fmask=0077,dmask=0077/' /mnt/etc/fstab
+else
+    info "Fixing /boot/efi permissions for GRUB"
+    sed -i '/\/boot\/efi.*vfat/s/defaults/defaults,fmask=0077,dmask=0077/' /mnt/etc/fstab
+fi
 
 newTask "==================================================\n=================================================="
 info "==== CHROOT SETUP ===="
@@ -1238,7 +1246,6 @@ USER_NAME="$1"
 LOGIN_MANAGER="$2"
 
 echo -e "\n"
-echo -e "Reseving Username: $USER_NAME and Login Manager: $LOGIN_MANAGER"
 
 echo "Temporarily disabling sudo password for wheel group"
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
