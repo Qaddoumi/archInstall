@@ -598,13 +598,13 @@ else
 fi
 newTask "==================================================\n=================================================="
 
-info -e "Enabling multilib repos"
+info "Enabling multilib repos"
 CONFIG_FILE="/etc/pacman.conf"
-info -e "Checking if config file exists"
+info "Checking if config file exists"
 if [[ ! -f "$CONFIG_FILE" ]]; then
     warn -e "Pacman configuration file not found at $CONFIG_FILE."
 else
-    info -e "Backup the original config file"
+    info "Backup the original config file"
     cp "$CONFIG_FILE" "${CONFIG_FILE}.bak" || {
         warn -e "Failed to create a backup of $CONFIG_FILE."
     }
@@ -612,26 +612,26 @@ else
     multiline=$(grep -n "^[[:space:]]*#*[[:space:]]*\[multilib\]" "$CONFIG_FILE" | cut -d: -f1)
     multiline_num=${multiline:-0}
 
-    info -e "check if mutilib section exist in the file"
+    info "check if mutilib section exist in the file"
     if [[ "$multiline_num" -eq 0 ]]; then
-        info -e "Multilib section does not exist; append it"
+        info "Multilib section does not exist; append it"
         echo -e "\n[multilib]\nInclude = /etc/pacman.d/mirrorlist" >> "$CONFIG_FILE"
-        info -e "Added [multilib] repository to $CONFIG_FILE."
+        info "Added [multilib] repository to $CONFIG_FILE."
     else
-        info -e "Multilib section exists; check if it's commented"
+        info "Multilib section exists; check if it's commented"
         first_char=$(sed -n "${multiline_num}{s/^[[:space:]]*\(.\).*/\1/p; q}" "$CONFIG_FILE")
         if [[ "$first_char" == "#" ]]; then
             sed -i "${multiline_num}s/^\s*#\s*\(\[multilib\]\)/\1/" "$CONFIG_FILE"
-            info -e "Uncommented [multilib] section in $CONFIG_FILE."
+            info "Uncommented [multilib] section in $CONFIG_FILE."
 
             include_line=$(($multiline_num + 1))
             sed -i "${include_line}s/^\s*#\s*\(Include = \/etc\/pacman\.d\/mirrorlist\)/\1/" "$CONFIG_FILE"
-            info -e "Uncommented Include line for multilib repository in $CONFIG_FILE."
+            info "Uncommented Include line for multilib repository in $CONFIG_FILE."
         else
-            info -e "Multilib repository is already enabled in $CONFIG_FILE."
+            info "Multilib repository is already enabled in $CONFIG_FILE."
         fi
     fi
-    info -e "Multilib repository is now enabled"
+    info "Multilib repository is now enabled"
 fi
 
 newTask "==================================================\n=================================================="
