@@ -535,10 +535,19 @@ if [[ "$BOOT_MODE" == "UEFI" ]]; then
     info "Mounting UEFI partitions..."
     mkdir -p /mnt || error "Failed to create /mnt"
     mount "$ROOT_PART" /mnt || error "Failed to mount root partition"
-    mkdir -p /mnt/boot/efi || error "Failed to create /mnt/boot/efi"
-    chmod 700 /mnt/boot/efi || error "Failed to set permissions on /mnt/boot/efi"
-    mkdir -p /mnt/boot/efi/loader || error "Failed to create /mnt/boot/efi/loader"
-    mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
+    
+    # Mount ESP based on bootloader choice
+    if [[ "$BOOTLOADER" == "systemd-boot" ]]; then
+        info "Mounting ESP at /boot for systemd-boot"
+        mkdir -p /mnt/boot || error "Failed to create /mnt/boot"
+        mount "$EFI_PART" /mnt/boot || error "Failed to mount EFI partition"
+    else
+        info "Mounting ESP at /boot/efi for GRUB"
+        mkdir -p /mnt/boot/efi || error "Failed to create /mnt/boot/efi"
+        chmod 700 /mnt/boot/efi || error "Failed to set permissions on /mnt/boot/efi"
+        mkdir -p /mnt/boot/efi/loader || error "Failed to create /mnt/boot/efi/loader"
+        mount -o uid=0,gid=0,umask=077 "$EFI_PART" /mnt/boot/efi || error "Failed to mount EFI partition"
+    fi
 else
     info "Creating BIOS partitions..."
     
@@ -583,6 +592,16 @@ findmnt | grep "/mnt" || error "Mount verification failed"
 
 info "Partitions mounted successfully for $BOOT_MODE mode:"
 mount | grep "/dev/$DISK"
+
+# Show ESP mount point for verification
+if [[ "$BOOT_MODE" == "UEFI" ]]; then
+    info "ESP mounted at:"
+    if [[ "$BOOTLOADER" == "systemd-boot" ]]; then
+        echo "  /mnt/boot (systemd-boot)"
+    else
+        echo "  /mnt/boot/efi (GRUB)"
+    fi
+fi
 
 newTask "==================================================\n=================================================="
 
@@ -835,7 +854,7 @@ sed -i '/\/boot\/efi/s/defaults/uid=0,gid=0,umask=077/' /mnt/etc/fstab
 newTask "==================================================\n=================================================="
 info "==== CHROOT SETUP ===="
 
-info "Configuring GRUB and hibernation in chroot..."
+info "Configuring BOOTLOADER and hibernation in chroot..."
 arch-chroot /mnt /bin/bash -s -- \
     "$ROOT_PASSWORD" "$USERNAME" "$USER_PASSWORD" \
     "$DISK" "$ROOT_PART" "$BOOTLOADER" "$UCODE_PKG" \
@@ -933,12 +952,16 @@ elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
     if [[ "$BOOT_MODE" != "UEFI" ]]; then
         error "systemd-boot requires UEFI boot mode"
     fi
-    install -dm700 /mnt/boot/efi/loader || warn "Failed to create loader directory"
+    
+    # For systemd-boot, ESP should be mounted at /boot
+    if ! mountpoint -q /boot; then
+        error "ESP not mounted at /boot for systemd-boot"
+    fi
+    
     info "Installing systemd-boot (running bootctl)"
-    bootctl --path=/boot/efi install || {
+    bootctl install || {
         error "systemd-boot installation failed"
     }
-    chown -R root:root /boot/efi || warn "Failed to set ownership of /boot/efi"
     info "systemd-boot installed successfully for UEFI"
 fi
 
@@ -1009,25 +1032,18 @@ if [[ "$BOOTLOADER" == "grub" ]]; then
     grub-mkconfig -o /boot/grub/grub.cfg || error "Failed to generate GRUB configuration"
 
 elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
-    mkdir -p /boot/efi/loader/entries || error "Failed to create /boot/efi/loader/entries directory"
-    # Copy kernel and initramfs to ESP
-    mkdir -p /boot/efi/arch
-    cp /boot/vmlinuz-linux /boot/efi/arch/
-    cp /boot/initramfs-linux.img /boot/efi/arch/
-    cp /boot/initramfs-linux-fallback.img /boot/efi/arch/
-    cp /boot/vmlinuz-linux-zen /boot/efi/arch/
-    cp /boot/initramfs-linux-zen.img /boot/efi/arch/
-    cp /boot/initramfs-linux-zen-fallback.img /boot/efi/arch/
+    # For systemd-boot, everything goes in /boot (which is the ESP)
+    mkdir -p /boot/loader/entries || error "Failed to create /boot/loader/entries directory"
+    
     # Copy microcode if it exists
     if [[ -f /boot/${UCODE_PKG}.img ]]; then
-        cp /boot/${UCODE_PKG}.img /boot/efi/arch/
-        UCODE_LINE="initrd /arch/${UCODE_PKG}.img"
+        UCODE_LINE="initrd /${UCODE_PKG}.img"
     else
         UCODE_LINE=""
     fi
 
     info "Configuring systemd-boot entries"
-    cat > /boot/efi/loader/loader.conf <<LOADEREOF
+    cat > /boot/loader/loader.conf <<LOADEREOF
 default arch
 timeout 4
 console-mode max
@@ -1035,52 +1051,55 @@ editor no
 LOADEREOF
 
     # Create proper systemd-boot entry
-    cat > /boot/efi/loader/entries/arch.conf <<ENTRYEOF
+    cat > /boot/loader/entries/arch.conf <<ENTRYEOF
 title Arch Linux
-linux /arch/vmlinuz-linux
+linux /vmlinuz-linux
 ${UCODE_LINE}
-initrd /arch/initramfs-linux.img
+initrd /initramfs-linux.img
 options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
 ENTRYEOF
 
     # Create fallback entry
-    cat > /boot/efi/loader/entries/arch-fallback.conf <<ENTRYEOF
+    cat > /boot/loader/entries/arch-fallback.conf <<ENTRYEOF
 title Arch Linux (fallback initramfs)
-linux /arch/vmlinuz-linux
+linux /vmlinuz-linux
 ${UCODE_LINE}
-initrd /arch/initramfs-linux-fallback.img
+initrd /initramfs-linux-fallback.img
 options root=UUID=${ROOT_UUID} rw
 ENTRYEOF
 
-    # Create zen entry
-    cat > /boot/efi/loader/entries/arch-zen.conf <<ZENEOF
+    # Create zen entry (only if zen kernel is installed)
+    if [[ -f /boot/vmlinuz-linux-zen ]]; then
+        cat > /boot/loader/entries/arch-zen.conf <<ZENEOF
 title Arch Linux (linux-zen)
-linux /arch/vmlinuz-linux-zen
+linux /vmlinuz-linux-zen
 ${UCODE_LINE}
-initrd /arch/initramfs-linux-zen.img
+initrd /initramfs-linux-zen.img
 options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}
 ZENEOF
 
-    # Create zen fallback entry
-    cat > /boot/efi/loader/entries/arch-zen-fallback.conf <<ZENFALLBACKEOF
+        # Create zen fallback entry
+        cat > /boot/loader/entries/arch-zen-fallback.conf <<ZENFALLBACKEOF
 title Arch Linux (linux-zen fallback initramfs)
-linux /arch/vmlinuz-linux-zen
+linux /vmlinuz-linux-zen
 ${UCODE_LINE}
-initrd /arch/initramfs-linux-zen-fallback.img
+initrd /initramfs-linux-zen-fallback.img
 options root=UUID=${ROOT_UUID} rw
 ZENFALLBACKEOF
+    fi
 
-    # Final validation for systemd-boot (after files are created)
+    # Final validation for systemd-boot
     if [[ -z "$SWAPFILE_OFFSET" ]] || [[ "$SWAPFILE_OFFSET" == "0" ]]; then
         warn "Could not determine swapfile offset. Hibernation may not work."
         warn "You can calculate it manually later with: filefrag -v /swapfile"
-        # Set default kernel parameters without hibernation
-        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE/" /boot/efi/loader/entries/arch.conf
-        sed -i "s/^options.*/options root=UUID=${ROOT_UUID} rw loglevel=3 $KERNEL_CMDLINE/" /boot/efi/loader/entries/arch-zen.conf
+        # Remove hibernation parameters from boot entries
+        sed -i "s/ resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}//" /boot/loader/entries/arch.conf
+        if [[ -f /boot/loader/entries/arch-zen.conf ]]; then
+            sed -i "s/ resume=UUID=${ROOT_UUID} resume_offset=${SWAPFILE_OFFSET}//" /boot/loader/entries/arch-zen.conf
+        fi
     else
         info "Swapfile offset: $SWAPFILE_OFFSET"
-        # Configure systemd-boot with hibernation support (files already created with hibernation)
-        info "systemd-boot entries already configured with hibernation support"
+        info "systemd-boot entries configured with hibernation support"
     fi
 
     info "systemd-boot configuration completed"
@@ -1092,7 +1111,7 @@ info "Resume offset: $SWAPFILE_OFFSET"
 
 newTask "==================================================\n=================================================="
 
-# (hypernate on lid close)
+# (hibernate on lid close)
 info "Configuring systemd for hibernation on lid close"
 mkdir -p /etc/systemd/logind.conf.d
 cat > /etc/systemd/logind.conf.d/hibernate.conf <<HIBERNATEEOF
@@ -1254,4 +1273,4 @@ info "Remember your credentials:"
 info "  Root password: Set during installation"
 info "  User: $USERNAME (with sudo privileges)"
 
-### version 0.7.2 ###
+### version 0.7.3 ###
