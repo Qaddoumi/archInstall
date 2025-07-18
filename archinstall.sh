@@ -773,10 +773,10 @@ PIPWIRE_PKGS="pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber"
 
 # Base packages, adjusted for bootloader choice
 if [[ "$BOOTLOADER" == "grub" ]]; then
-    BASE_PKGS="base linux linux-firmware linux-zen linux-zen-headers grub efibootmgr os-prober e2fsprogs archlinux-keyring polkit"
+    BASE_PKGS="base linux linux-headers linux-firmware linux-zen linux-zen-headers grub efibootmgr os-prober e2fsprogs archlinux-keyring polkit"
 else
     # For systemd-boot package it's part of the base packages
-    BASE_PKGS="base linux linux-firmware linux-zen linux-zen-headers e2fsprogs archlinux-keyring polkit"
+    BASE_PKGS="base linux linux-headers linux-firmware linux-zen linux-zen-headers e2fsprogs archlinux-keyring polkit"
 fi
 OPTIONAL_PKGS="curl networkmanager sudo git openssh"
 
