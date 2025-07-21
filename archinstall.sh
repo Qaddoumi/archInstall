@@ -931,6 +931,15 @@ echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
 
 newTask "==================================================\n=================================================="
 
+# Ensure home directory exists and has correct permissions
+mkdir -p "/home/$USERNAME" || error "Failed to create home directory"
+# Set ownership and permissions
+info "Setting ownership and permissions for /home/$USERNAME"
+chown "$USERNAME:$USERNAME" "/home/$USERNAME"
+chmod 755 "/home/$USERNAME"
+
+newTask "==================================================\n=================================================="
+
 # Configure mkinitcpio for hibernation
 info "Configuring mkinitcpio for hibernation"
 # Backup original config
